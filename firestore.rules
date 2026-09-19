@@ -1,0 +1,65 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Deny All Fallback
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Accounts for custom email and password authentication
+    match /accounts/{emailKey} {
+      allow get: if isValidId(emailKey);
+      allow list: if false;
+      allow create: if isValidId(emailKey);
+      allow update: if isValidId(emailKey);
+      allow delete: if false;
+    }
+
+    // User profiles
+    match /users/{userId} {
+      allow get: if isValidId(userId);
+      allow list: if false; // Protect user table from mass scraping
+      allow create, update: if isValidId(userId);
+      allow delete: if isValidId(userId);
+    }
+
+    // Presence table for online LocalSend peer discovery over internet
+    match /presence/{userId} {
+      allow get: if isValidId(userId);
+      allow list: if true;
+      allow create, update: if isValidId(userId);
+      allow delete: if isValidId(userId);
+    }
+
+    // Chat Rooms
+    match /rooms/{roomId} {
+      allow get: if isValidId(roomId);
+      allow list: if true;
+      allow create: if isValidId(roomId);
+      allow update: if isValidId(roomId);
+      allow delete: if isValidId(roomId);
+
+      // Messages within rooms
+      match /messages/{messageId} {
+        allow get: if isValidId(roomId) && isValidId(messageId);
+        allow list: if isValidId(roomId);
+        allow create: if isValidId(roomId) && isValidId(messageId);
+        allow update: if false;
+        allow delete: if isValidId(roomId) && isValidId(messageId);
+      }
+    }
+
+    // Direct LocalSend-style peer-to-peer transfers over internet
+    match /transfers/{transferId} {
+      allow get: if isValidId(transferId);
+      allow list: if true;
+      allow create: if isValidId(transferId);
+      allow update: if isValidId(transferId);
+      allow delete: if isValidId(transferId);
+    }
+  }
+}

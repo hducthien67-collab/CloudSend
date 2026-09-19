@@ -1,0 +1,131 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile in Firebase",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "deviceName": { "type": "string" },
+        "deviceType": { "type": "string" },
+        "avatarColor": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "displayName"]
+    },
+    "Presence": {
+      "title": "Presence",
+      "description": "Real-time online device state for relay discovery",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "deviceName": { "type": "string" },
+        "deviceType": { "type": "string" },
+        "status": { "type": "string" },
+        "lastSeen": { "type": "string" },
+        "currentRoomId": { "type": "string" }
+      },
+      "required": ["uid", "displayName", "deviceName", "status", "lastSeen"]
+    },
+    "Room": {
+      "title": "Room",
+      "description": "Chat room for messaging and file exchange",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["id", "name", "code", "createdBy", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Chat message or file transfer event within a room",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "roomId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderDevice": { "type": "string" },
+        "text": { "type": "string" },
+        "fileData": { "type": "string" },
+        "fileName": { "type": "string" },
+        "fileSize": { "type": "number" },
+        "fileType": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "roomId", "senderId", "senderName", "createdAt"]
+    },
+    "DirectTransfer": {
+      "title": "DirectTransfer",
+      "description": "Direct file or text drop between two online devices",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderDevice": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "receiverName": { "type": "string" },
+        "fileName": { "type": "string" },
+        "fileSize": { "type": "number" },
+        "fileType": { "type": "string" },
+        "fileData": { "type": "string" },
+        "textContent": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "senderId", "receiverId", "status", "createdAt"]
+    },
+    "Account": {
+      "title": "Account",
+      "description": "User credentials for email and password authentication",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "passwordHash": { "type": "string" },
+        "displayName": { "type": "string" },
+        "deviceName": { "type": "string" },
+        "deviceType": { "type": "string" },
+        "avatarColor": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "passwordHash", "displayName", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/accounts/{emailKey}": {
+      "schema": { "$ref": "#/entities/Account" },
+      "description": "Registered user credentials keyed by base64/hex of email"
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profile document keyed by auth uid"
+    },
+    "/presence/{userId}": {
+      "schema": { "$ref": "#/entities/Presence" },
+      "description": "Online presence of peer devices on internet relay"
+    },
+    "/rooms/{roomId}": {
+      "schema": { "$ref": "#/entities/Room" },
+      "description": "Chat rooms created by users"
+    },
+    "/rooms/{roomId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/Message" },
+      "description": "Messages and shared items inside a chat room"
+    },
+    "/transfers/{transferId}": {
+      "schema": { "$ref": "#/entities/DirectTransfer" },
+      "description": "Direct LocalSend-style transfer requests between devices"
+    }
+  }
+}

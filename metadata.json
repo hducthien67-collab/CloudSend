@@ -1,0 +1,8 @@
+{
+  "name": "CloudSend",
+  "description": "Nền tảng kết nối phòng chat và truyền tệp tin qua mạng Internet phong cách LocalSend với máy chủ trung gian Firebase.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
