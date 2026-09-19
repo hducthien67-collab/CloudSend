@@ -35,6 +35,13 @@ export interface ChatRoom {
   membersCount?: number;
 }
 
+export interface ChatAttachment {
+  name: string;
+  size: number;
+  type: string;
+  data: string; // base64
+}
+
 export interface ChatMessage {
   id: string;
   roomId: string;
@@ -46,6 +53,7 @@ export interface ChatMessage {
   fileName?: string;
   fileSize?: number;
   fileType?: string;
+  attachments?: ChatAttachment[];
   createdAt: string;
   timestamp?: number;
   serverTimestamp?: any;
