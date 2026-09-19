@@ -11,7 +11,8 @@ import {
   doc, 
   getDocs,
   where,
-  limit
+  limit,
+  serverTimestamp
 } from 'firebase/firestore';
 import { ChatRoom, ChatMessage } from '../types';
 import { 
@@ -106,23 +107,58 @@ export const ChatRoomView: React.FC = () => {
     return () => unsubscribe();
   }, [currentUser]);
 
+  // Helper to extract a reliable numeric timestamp from a message
+  const getMessageTime = (msg: Partial<ChatMessage>): number => {
+    if (typeof msg.timestamp === 'number' && msg.timestamp > 0) {
+      return msg.timestamp;
+    }
+    if (msg.serverTimestamp && typeof msg.serverTimestamp.toMillis === 'function') {
+      return msg.serverTimestamp.toMillis();
+    }
+    if (msg.createdAt) {
+      const parsed = new Date(msg.createdAt).getTime();
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+    return 0;
+  };
+
   // Listen to messages in active room
   useEffect(() => {
     if (!currentUser || !activeRoomId) return;
 
     const messagesRef = collection(db, 'rooms', activeRoomId, 'messages');
-    const q = query(messagesRef, orderBy('createdAt', 'asc'), limit(100));
+    // Fetch with limit and order by createdAt asc
+    const q = query(messagesRef, orderBy('createdAt', 'asc'), limit(150));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgs: ChatMessage[] = [];
       let hasNewExternalMsg = false;
 
       snapshot.forEach((docSnap) => {
-        const msg = { id: docSnap.id, ...docSnap.data() } as ChatMessage;
+        const data = docSnap.data();
+        const msg = { id: docSnap.id, ...data } as ChatMessage;
         msgs.push(msg);
         if (msg.senderId !== currentUser.uid && !initialLoadRef.current) {
           hasNewExternalMsg = true;
         }
+      });
+
+      // CRITICAL FIX: Deterministically sort messages client-side so messages
+      // never scramble even if local clocks differ slightly or network responses arrive out of order
+      msgs.sort((a, b) => {
+        const timeA = getMessageTime(a);
+        const timeB = getMessageTime(b);
+        if (timeA !== timeB) {
+          return timeA - timeB;
+        }
+        // Tie-breaker 1: ISO string comparison
+        const strA = a.createdAt || '';
+        const strB = b.createdAt || '';
+        if (strA !== strB) {
+          return strA.localeCompare(strB);
+        }
+        // Tie-breaker 2: unique document ID
+        return a.id.localeCompare(b.id);
       });
 
       setMessages(msgs);
@@ -169,13 +205,16 @@ export const ChatRoomView: React.FC = () => {
     setAttachedBase64(null);
 
     try {
+      const now = new Date();
       const messagePayload: any = {
         roomId: activeRoomId,
         senderId: currentUser.uid,
         senderName: userProfile?.displayName || currentUser.displayName || 'Người dùng',
         senderDevice: settings.deviceName,
         text: textToSend,
-        createdAt: new Date().toISOString(),
+        createdAt: now.toISOString(),
+        timestamp: now.getTime(),
+        serverTimestamp: serverTimestamp(),
       };
 
       if (fileToSend && base64ToSend) {
@@ -399,7 +438,12 @@ export const ChatRoomView: React.FC = () => {
                     </span>
                     <span>•</span>
                     <span className="text-slate-500">
-                      {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {(() => {
+                        const t = getMessageTime(msg);
+                        return t > 0
+                          ? new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                          : '';
+                      })()}
                     </span>
                   </div>
 

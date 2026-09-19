@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { CloudSendLogo } from './CloudSendLogo';
 import { 
   Send, 
   Laptop, 
@@ -124,8 +125,8 @@ export const AuthModal: React.FC = () => {
       <div className="relative w-full max-w-md z-10 my-8">
         {/* Header Branding (LocalSend style: Clean, modern, intuitive) */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 shadow-lg shadow-emerald-500/20 mb-3.5">
-            <Send className="w-8 h-8" />
+          <div className="inline-flex items-center justify-center mb-3.5 shadow-xl shadow-emerald-500/10 rounded-2xl">
+            <CloudSendLogo className="w-16 h-16 rounded-2xl" size={64} />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-white flex items-center justify-center gap-2">
             CloudSend

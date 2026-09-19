@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
+import { CloudSendLogo } from './CloudSendLogo';
 import { 
   Send, 
   Download, 
@@ -44,8 +45,8 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
         {/* Logo and Status */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 font-bold shadow-md shadow-emerald-500/20">
-            <Send className="w-5 h-5 -rotate-12" />
+          <div className="relative group cursor-pointer" onClick={() => setActiveTab('send')}>
+            <CloudSendLogo className="w-10 h-10 shadow-lg shadow-emerald-500/10 rounded-xl transition-transform group-hover:scale-105" size={40} />
           </div>
           <div>
             <div className="flex items-center gap-2">

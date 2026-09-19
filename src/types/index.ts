@@ -47,6 +47,8 @@ export interface ChatMessage {
   fileSize?: number;
   fileType?: string;
   createdAt: string;
+  timestamp?: number;
+  serverTimestamp?: any;
 }
 
 export interface DirectTransfer {

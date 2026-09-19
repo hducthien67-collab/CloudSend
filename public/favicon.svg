@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="cs-bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#059669" />
+      <stop offset="100%" stop-color="#0D9488" />
+    </linearGradient>
+    <filter id="cs-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.3" />
+    </filter>
+  </defs>
+
+  <!-- Clean rounded icon tile -->
+  <rect width="64" height="64" rx="16" fill="url(#cs-bg)" />
+
+  <!-- Paper plane / Send icon in pure crisp white -->
+  <g filter="url(#cs-shadow)">
+    <path 
+      d="M50 14L28 36M50 14L37 50C36.6 51.2 35 51.5 34.2 50.5L27 41.5L16.8 38C15.7 37.6 15.6 36.1 16.6 35.5L50 14Z" 
+      stroke="#FFFFFF" 
+      stroke-width="4.5" 
+      stroke-linecap="round" 
+      stroke-linejoin="round"
+      fill="#FFFFFF"
+      fill-opacity="0.2"
+    />
+  </g>
+</svg>
