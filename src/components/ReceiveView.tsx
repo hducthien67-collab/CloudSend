@@ -125,23 +125,23 @@ export const ReceiveView: React.FC = () => {
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
+    <div className="w-full max-w-6xl 2xl:max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-6 sm:space-y-8">
       {/* Ready to Receive Status Card (LocalSend style) */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-8 shadow-xl relative overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
             <div 
-              className="w-16 h-16 rounded-2xl flex items-center justify-center text-white shadow-lg shrink-0"
+              className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center text-white shadow-lg shrink-0"
               style={{ backgroundColor: settings.avatarColor }}
             >
-              <Download className="w-8 h-8" />
+              <Download className="w-7 h-7 sm:w-8 sm:h-8" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xl font-bold text-white tracking-tight">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-lg sm:text-xl font-bold text-white tracking-tight truncate">
                   {settings.deviceName}
                 </span>
-                <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
                   <Radio className="w-3 h-3 animate-pulse" />
                   Sẵn sàng nhận
                 </span>
@@ -214,10 +214,27 @@ export const ReceiveView: React.FC = () => {
                   }`}
                 >
                   <div className="flex items-start gap-3.5 min-w-0">
-                    {/* Icon */}
-                    <div className="w-11 h-11 rounded-xl bg-slate-800 text-slate-300 flex items-center justify-center shrink-0">
-                      {item.fileName ? <FileText className="w-5 h-5 text-emerald-400" /> : <Copy className="w-5 h-5 text-teal-400" />}
-                    </div>
+                    {/* Actual Image Thumbnail or Document Icon */}
+                    {isImage ? (
+                      <div 
+                        onClick={() => setPreviewImage(item.fileData!)}
+                        className="relative group/thumb cursor-pointer w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden border border-slate-700 bg-slate-950 shrink-0 shadow-md hover:ring-2 hover:ring-emerald-500 transition-all"
+                        title="Nhấn để xem ảnh phóng to"
+                      >
+                        <img 
+                          src={item.fileData} 
+                          alt={item.fileName || 'Ảnh'} 
+                          className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform"
+                        />
+                        <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center transition-opacity">
+                          <Eye className="w-4 h-4 text-white drop-shadow" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-slate-800 text-slate-300 flex items-center justify-center shrink-0">
+                        {item.fileName ? <FileText className="w-5 h-5 text-emerald-400" /> : <Copy className="w-5 h-5 text-teal-400" />}
+                      </div>
+                    )}
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -255,9 +272,23 @@ export const ReceiveView: React.FC = () => {
                         </span>
                       </p>
 
+                      {/* Image preview hint if image */}
+                      {isImage && (
+                        <div className="mt-1.5 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setPreviewImage(item.fileData!)}
+                            className="text-[11px] text-emerald-400 hover:text-emerald-300 hover:underline flex items-center gap-1 font-medium"
+                          >
+                            <Eye className="w-3 h-3" />
+                            Xem ảnh trước khi tải
+                          </button>
+                        </div>
+                      )}
+
                       {/* Snippet preview if text */}
                       {item.textContent && (
-                        <div className="mt-2.5 p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 text-xs font-mono text-slate-200 break-all max-h-24 overflow-y-auto">
+                        <div className="mt-2.5 p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-xs text-slate-200 whitespace-pre-wrap break-words max-h-36 overflow-y-auto leading-relaxed">
                           {item.textContent}
                         </div>
                       )}

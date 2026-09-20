@@ -24,14 +24,29 @@ export interface PresenceDevice {
   currentRoomId?: string;
 }
 
+export interface RoomMember {
+  uid: string;
+  displayName: string;
+  deviceName: string;
+  avatarColor: string;
+  role: 'owner' | 'member';
+  joinedAt: string;
+}
+
 export interface ChatRoom {
   id: string;
   name: string;
   code: string;
+  isPrivate?: boolean;
+  avatar?: string;
+  avatarColor?: string;
   createdBy: string;
   createdByName: string;
   createdAt: string;
   description?: string;
+  ownerId?: string;
+  ownerName?: string;
+  members?: RoomMember[];
   membersCount?: number;
 }
 
@@ -75,12 +90,15 @@ export interface DirectTransfer {
   createdAt: string;
 }
 
+export type DpiScaleMode = 'auto' | 'compact' | 'standard' | 'large' | 'xlarge';
+
 export interface AppSettings {
   deviceName: string;
   deviceType: DeviceType;
   avatarColor: string;
   autoAccept: boolean;
   soundEnabled: boolean;
+  dpiScaleMode?: DpiScaleMode;
 }
 
 export interface AppUser {

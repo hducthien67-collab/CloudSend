@@ -38,10 +38,16 @@
         "id": { "type": "string" },
         "name": { "type": "string" },
         "code": { "type": "string" },
+        "isPrivate": { "type": "boolean" },
+        "avatar": { "type": "string" },
+        "avatarColor": { "type": "string" },
         "createdBy": { "type": "string" },
         "createdByName": { "type": "string" },
         "createdAt": { "type": "string" },
-        "description": { "type": "string" }
+        "description": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "members": { "type": "array" }
       },
       "required": ["id", "name", "code", "createdBy", "createdAt"]
     },

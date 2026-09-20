@@ -8,13 +8,14 @@ import {
   onSnapshot, 
   addDoc, 
   setDoc, 
+  updateDoc,
   doc, 
   getDocs,
   where,
   limit,
   serverTimestamp
 } from 'firebase/firestore';
-import { ChatRoom, ChatMessage, ChatAttachment } from '../types';
+import { ChatRoom, ChatMessage, ChatAttachment, RoomMember } from '../types';
 import { 
   MessagesSquare, 
   Plus, 
@@ -32,10 +33,18 @@ import {
   Share2, 
   X,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  ChevronLeft,
+  Info,
+  Lock,
+  Globe,
+  Crown,
+  AlertTriangle
 } from 'lucide-react';
 import { formatFileSize } from '../utils/device';
 import { playSendSound, playReceiveSound } from '../utils/sound';
+import { censorProfanity, moderateUploadedImage } from '../utils/moderation';
+import { RoomDetailsModal } from './RoomDetailsModal';
 
 export const ChatRoomView: React.FC = () => {
   const { currentUser, userProfile, settings } = useAuth();
@@ -48,9 +57,15 @@ export const ChatRoomView: React.FC = () => {
   // Create / Join Room state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newRoomName, setNewRoomName] = useState('');
-  const [newRoomDesc, setNewRoomDesc] = useState('');
+  const [newRoomMode, setNewRoomMode] = useState<'public' | 'private'>('public');
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [joinError, setJoinError] = useState<string | null>(null);
+
+  // Room details & structure modal ("i" button)
+  const [showRoomDetails, setShowRoomDetails] = useState(false);
+
+  // Moderation warning notification
+  const [moderationWarning, setModerationWarning] = useState<string | null>(null);
 
   // Multiple file attachments in chat
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
@@ -60,6 +75,7 @@ export const ChatRoomView: React.FC = () => {
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   const [copiedCode, setCopiedCode] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'rooms' | 'chat'>('chat');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const initialLoadRef = useRef(true);
 
@@ -78,12 +94,17 @@ export const ChatRoomView: React.FC = () => {
         const publicRoomRef = doc(db, 'rooms', 'public-relay-lounge');
         await setDoc(publicRoomRef, {
           id: 'public-relay-lounge',
-          name: 'Phòng Chung (Relay Lounge)',
+          name: 'Đại Sảnh Toàn Cầu (Global Lounge)',
           code: 'PUBLIC',
+          isPrivate: false,
           createdBy: 'system',
           createdByName: 'Hệ thống CloudSend',
+          ownerId: 'system',
+          ownerName: 'Hệ thống CloudSend',
+          avatarColor: '#10b981',
           createdAt: '2026-01-01T00:00:00.000Z',
-          description: 'Phòng chat kết nối công khai cho tất cả thiết bị trên mạng Relay',
+          description: 'Sảnh kết nối công khai không giới hạn cho mọi thiết bị trên mạng',
+          members: [],
         }, { merge: true });
       } catch (err) {
         console.warn('Init public room error:', err);
@@ -282,6 +303,16 @@ export const ChatRoomView: React.FC = () => {
       for (const file of itemsToProcess) {
         if (file.type.startsWith('image/')) {
           const processed = await compressImage(file);
+          // Content Moderation check for 18+ and extreme gore
+          const modResult = await moderateUploadedImage(processed.data, file.name);
+          if (!modResult.safe) {
+            setModerationWarning(
+              modResult.reason || 
+              `Ảnh "${file.name}" đã bị từ chối do vi phạm quy chuẩn nội dung (Chứa yếu tố 18+ nhạy cảm hoặc bạo lực máu me quá mức).`
+            );
+            setTimeout(() => setModerationWarning(null), 7000);
+            continue; // Skip this file immediately!
+          }
           newAttachments.push(processed);
         } else {
           const processed = await processGeneralFile(file);
@@ -363,7 +394,9 @@ export const ChatRoomView: React.FC = () => {
     if (!currentUser) return;
     if (!inputText.trim() && attachments.length === 0) return;
 
-    const textToSend = inputText.trim();
+    // Filter profanity / vulgar language: replace with ***
+    const { cleanText } = censorProfanity(inputText.trim());
+    const textToSend = cleanText;
     const attachmentsToSend = [...attachments];
 
     // Reset input immediately for responsive feel
@@ -412,43 +445,89 @@ export const ChatRoomView: React.FC = () => {
     e.preventDefault();
     if (!currentUser || !newRoomName.trim()) return;
 
-    const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const isPrivate = newRoomMode === 'private';
+    const randomCode = isPrivate 
+      ? Math.random().toString(36).substring(2, 8).toUpperCase()
+      : 'PUBLIC';
     const roomId = `room-${Date.now()}`;
+
+    // Mark creator as Trưởng phòng (Owner)
+    const creatorMember: RoomMember = {
+      uid: currentUser.uid,
+      displayName: userProfile?.displayName || currentUser.displayName || 'Trưởng phòng',
+      deviceName: settings.deviceName,
+      avatarColor: settings.avatarColor || '#10b981',
+      role: 'owner',
+      joinedAt: new Date().toISOString()
+    };
 
     try {
       const roomPayload: ChatRoom = {
         id: roomId,
         name: newRoomName.trim(),
         code: randomCode,
+        isPrivate: isPrivate,
         createdBy: currentUser.uid,
         createdByName: userProfile?.displayName || 'Người dùng',
+        ownerId: currentUser.uid,
+        ownerName: userProfile?.displayName || currentUser.displayName || 'Trưởng phòng',
+        avatarColor: settings.avatarColor || '#10b981',
         createdAt: new Date().toISOString(),
-        description: newRoomDesc.trim() || 'Phòng kết nối riêng',
+        description: isPrivate 
+          ? 'Phòng riêng tư (Nhập mã ID để vào)' 
+          : 'Phòng cộng đồng (Tự do tham gia không cần ID)',
+        members: [creatorMember],
+        membersCount: 1
       };
 
       await setDoc(doc(db, 'rooms', roomId), roomPayload);
       setActiveRoomId(roomId);
       setShowCreateModal(false);
       setNewRoomName('');
-      setNewRoomDesc('');
+      setNewRoomMode('public');
     } catch (err) {
       console.error('Create room error:', err);
     }
   };
 
-  // Join room by 6-char code
+  // Join room by ID / Code
   const handleJoinByCode = async (e: React.FormEvent) => {
     e.preventDefault();
     setJoinError(null);
     const code = joinCodeInput.trim().toUpperCase();
     if (!code) return;
 
-    const found = rooms.find(r => r.code.toUpperCase() === code);
+    const found = rooms.find(r => r.code?.toUpperCase() === code || r.id === code);
     if (found) {
+      // Khi người nào đó nhập trúng ID và vô nhóm thì tự động là thành viên
+      const existingMembers = found.members || [];
+      const isAlreadyMember = existingMembers.some(m => m.uid === currentUser?.uid);
+
+      if (!isAlreadyMember && currentUser) {
+        const newMember: RoomMember = {
+          uid: currentUser.uid,
+          displayName: userProfile?.displayName || currentUser.displayName || 'Thành viên',
+          deviceName: settings.deviceName,
+          avatarColor: settings.avatarColor || '#3b82f6',
+          role: 'member', // Là thành viên
+          joinedAt: new Date().toISOString()
+        };
+
+        try {
+          await updateDoc(doc(db, 'rooms', found.id), {
+            members: [...existingMembers, newMember],
+            membersCount: existingMembers.length + 1
+          });
+        } catch (err) {
+          console.warn('Update room members error:', err);
+        }
+      }
+
       setActiveRoomId(found.id);
       setJoinCodeInput('');
+      setMobileTab('chat');
     } else {
-      setJoinError('Không tìm thấy phòng với mã này.');
+      setJoinError('Không tìm thấy phòng với mã ID này. Vui lòng kiểm tra lại!');
     }
   };
 
@@ -458,14 +537,23 @@ export const ChatRoomView: React.FC = () => {
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
+  // Filter visible rooms: all public rooms, and private rooms where user is member or creator
+  const visibleRooms = rooms.filter(room => {
+    if (room.id === 'public-relay-lounge' || room.isPrivate === false) return true;
+    if (!currentUser) return false;
+    const isOwner = room.ownerId === currentUser.uid || room.createdBy === currentUser.uid;
+    const isMember = (room.members || []).some(m => m.uid === currentUser.uid);
+    return isOwner || isMember;
+  });
+
   const activeRoom = rooms.find(r => r.id === activeRoomId) || rooms[0];
 
   return (
-    <div className="w-full max-w-[1500px] mx-auto px-2 sm:px-4 py-3 sm:py-6 h-[calc(100vh-4.5rem)] flex flex-col md:flex-row gap-4 md:gap-6">
+    <div className="flex-1 h-full min-h-0 w-full px-3 sm:px-6 lg:px-8 py-2 sm:py-4 flex flex-col md:flex-row gap-3 md:gap-6 overflow-hidden">
       {/* Left Sidebar: Room List & Actions */}
-      <div className="w-full md:w-80 lg:w-96 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col shadow-xl overflow-hidden shrink-0">
+      <div className={`${mobileTab === 'rooms' ? 'flex' : 'hidden md:flex'} w-full md:w-80 lg:w-96 bg-slate-900 border border-slate-800 rounded-2xl flex-col shadow-xl overflow-hidden shrink-0`}>
         {/* Sidebar Header */}
-        <div className="p-4 border-b border-slate-800 bg-slate-950/40 flex items-center justify-between">
+        <div className="p-3.5 sm:p-4 border-b border-slate-800 bg-slate-950/40 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <MessagesSquare className="w-5 h-5 text-emerald-400" />
             <h3 className="text-base font-bold text-white">Phòng Chat</h3>
@@ -482,7 +570,7 @@ export const ChatRoomView: React.FC = () => {
         </div>
 
         {/* Quick Join by Code */}
-        <div className="p-3.5 border-b border-slate-800/80 bg-slate-950/20">
+        <div className="p-3 sm:p-3.5 border-b border-slate-800/80 bg-slate-950/20">
           <form onSubmit={handleJoinByCode} className="flex gap-2">
             <input
               type="text"
@@ -502,16 +590,20 @@ export const ChatRoomView: React.FC = () => {
         </div>
 
         {/* Room List */}
-        <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5">
-          {rooms.map((room) => {
+        <div className="flex-1 overflow-y-auto p-2 sm:p-2.5 space-y-1.5">
+          {visibleRooms.map((room) => {
             const isActive = room.id === activeRoomId;
+            const isOwner = room.ownerId === currentUser?.uid || room.createdBy === currentUser?.uid;
             return (
               <button
                 key={room.id}
                 id={`room-item-${room.id}`}
                 type="button"
-                onClick={() => setActiveRoomId(room.id)}
-                className={`w-full text-left p-3.5 rounded-xl transition-all flex items-center justify-between group ${
+                onClick={() => {
+                  setActiveRoomId(room.id);
+                  setMobileTab('chat');
+                }}
+                className={`w-full text-left p-3 sm:p-3.5 rounded-xl transition-all flex items-center justify-between group ${
                   isActive
                     ? 'bg-emerald-500/10 border border-emerald-500/30 text-white shadow-sm'
                     : 'text-slate-300 hover:bg-slate-800/60 border border-transparent'
@@ -519,22 +611,38 @@ export const ChatRoomView: React.FC = () => {
               >
                 <div className="min-w-0 flex-1 pr-2">
                   <div className="flex items-center gap-2">
+                    {room.isPrivate !== false && room.id !== 'public-relay-lounge' ? (
+                      <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    ) : (
+                      <Globe className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    )}
                     <span className="font-semibold text-sm truncate">
                       {room.name}
                     </span>
-                    {room.id === 'public-relay-lounge' && (
+                    {room.id === 'public-relay-lounge' ? (
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono">
                         Chung
+                      </span>
+                    ) : isOwner ? (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 flex items-center gap-0.5">
+                        <Crown className="w-2.5 h-2.5 text-amber-400" />
+                        Trưởng phòng
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-400">
+                        Thành viên
                       </span>
                     )}
                   </div>
                   <p className="text-xs text-slate-400 truncate mt-0.5">
-                    {room.description || `Mã: ${room.code}`}
+                    {room.description || (room.isPrivate !== false ? `Mã riêng tư: ${room.code}` : 'Phòng cộng đồng')}
                   </p>
                 </div>
-                <span className="text-xs font-mono px-2 py-1 rounded-md bg-slate-800 text-slate-400 shrink-0">
-                  {room.code}
-                </span>
+                {room.isPrivate !== false && room.id !== 'public-relay-lounge' && (
+                  <span className="text-xs font-mono px-2 py-1 rounded-md bg-slate-800 text-amber-400 shrink-0 border border-amber-500/20">
+                    {room.code}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -546,7 +654,7 @@ export const ChatRoomView: React.FC = () => {
         onDragOver={handleChatDragOver}
         onDragLeave={handleChatDragLeave}
         onDrop={handleChatDrop}
-        className={`flex-1 bg-slate-900 border rounded-2xl flex flex-col shadow-xl overflow-hidden min-h-[500px] relative transition-colors ${
+        className={`${mobileTab === 'chat' ? 'flex' : 'hidden md:flex'} flex-1 bg-slate-900 border rounded-2xl flex-col shadow-xl overflow-hidden min-h-[350px] relative transition-colors ${
           isDraggingOverChat ? 'border-emerald-500 bg-slate-900/90 ring-2 ring-emerald-500/40' : 'border-slate-800'
         }`}
       >
@@ -562,34 +670,55 @@ export const ChatRoomView: React.FC = () => {
             </p>
           </div>
         )}
+
         {/* Room Header */}
         {activeRoom && (
-          <div className="px-6 py-4 border-b border-slate-800 bg-slate-950/40 flex items-center justify-between gap-4">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2.5">
-                <h2 className="text-base font-bold text-white truncate">
-                  {activeRoom.name}
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => handleCopyRoomCode(activeRoom.code)}
-                  title="Sao chép mã phòng"
-                  className="inline-flex items-center gap-1 text-xs font-mono px-2.5 py-0.5 rounded-full bg-slate-800 text-emerald-400 hover:bg-slate-700 transition-colors border border-slate-700"
-                >
-                  {copiedCode ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-slate-400" />}
-                  <span>{activeRoom.code}</span>
-                </button>
+          <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-800 bg-slate-950/40 flex items-center justify-between gap-3">
+            <div className="min-w-0 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setMobileTab('rooms')}
+                className="md:hidden p-1.5 -ml-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
+                title="Danh sách phòng"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-sm sm:text-base font-bold text-white truncate">
+                    {activeRoom.name}
+                  </h2>
+                  {activeRoom.isPrivate !== false && activeRoom.id !== 'public-relay-lounge' && (
+                    <button
+                      type="button"
+                      onClick={() => handleCopyRoomCode(activeRoom.code)}
+                      title="Sao chép mã phòng"
+                      className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-mono px-2 py-0.5 rounded-full bg-slate-800 text-amber-400 hover:bg-slate-700 transition-colors border border-amber-500/30 shrink-0"
+                    >
+                      {copiedCode ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-slate-400" />}
+                      <span>ID: {activeRoom.code}</span>
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] sm:text-xs text-slate-400 truncate mt-0.5">
+                  {activeRoom.description || (activeRoom.isPrivate !== false ? 'Phòng riêng tư bảo mật' : 'Sảnh kết nối công khai')}
+                </p>
               </div>
-              <p className="text-xs text-slate-400 truncate mt-0.5">
-                {activeRoom.description || 'Truyền tin nhắn & tệp tức thời qua máy chủ trung gian'}
-              </p>
             </div>
 
+            {/* "i" Icon button replacing "Relay Trực Tuyến" */}
             <div className="flex items-center gap-2 shrink-0">
-              <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-mono bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                Relay Trực Tuyến
-              </span>
+              <button
+                id="room-info-i-btn"
+                type="button"
+                onClick={() => setShowRoomDetails(true)}
+                title={activeRoom.isPrivate !== false ? "Cấu trúc & Cài đặt phòng riêng tư" : "Thông tin & Thành viên phòng"}
+                className="w-9 h-9 rounded-full bg-slate-800 hover:bg-emerald-600/20 text-slate-300 hover:text-emerald-400 border border-slate-700/80 hover:border-emerald-500/40 flex items-center justify-center shadow-sm active:scale-95 transition-all group"
+              >
+                <span className="font-serif italic font-bold text-base text-emerald-400 group-hover:scale-110 transition-transform">
+                  i
+                </span>
+              </button>
             </div>
           </div>
         )}
@@ -794,6 +923,25 @@ export const ChatRoomView: React.FC = () => {
           </div>
         )}
 
+        {/* Moderation Warning Toast/Banner */}
+        {moderationWarning && (
+          <div className="mx-4 mb-2 p-3 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-rose-200 text-xs sm:text-sm flex items-center justify-between gap-3 animate-in fade-in duration-200 shadow-xl">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-rose-500/30 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-4 h-4 text-rose-300" />
+              </div>
+              <span className="font-medium text-rose-100">{moderationWarning}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setModerationWarning(null)}
+              className="p-1.5 rounded-lg hover:bg-rose-500/30 text-rose-300 hover:text-white shrink-0 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Input Bar */}
         <div className="p-4 border-t border-slate-800 bg-slate-950/50">
           <form onSubmit={handleSendMessage} className="flex items-center gap-2 sm:gap-3">
@@ -845,7 +993,7 @@ export const ChatRoomView: React.FC = () => {
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onPaste={handleChatPaste}
-              placeholder={isCompressing ? "Đang tối ưu hóa hình ảnh..." : "Nhập tin nhắn... (hoặc dán Ctrl+V / kéo thả nhiều ảnh vào đây)"}
+              placeholder={isCompressing ? "Đang kiểm tra an toàn & xử lý ảnh..." : "Nhập tin nhắn... (hoặc dán Ctrl+V / kéo thả nhiều ảnh vào đây)"}
               disabled={isCompressing}
               className="flex-1 px-4 py-3 bg-slate-950/80 border border-slate-800 rounded-xl text-sm sm:text-base text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
             />
@@ -866,58 +1014,111 @@ export const ChatRoomView: React.FC = () => {
 
       {/* Create Room Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-white">Tạo phòng chat mới</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <MessagesSquare className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-base font-bold text-white">Tạo phòng chat mới</h3>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowCreateModal(false)}
-                className="p-1 text-slate-400 hover:text-white"
+                className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleCreateRoom} className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Tên phòng
+              {/* Dòng 1: Tên phòng */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                  Dòng 1: Tên phòng
                 </label>
                 <input
                   type="text"
                   required
                   value={newRoomName}
                   onChange={(e) => setNewRoomName(e.target.value)}
-                  placeholder="Ví dụ: Trao Đổi Dự Án, Phòng Bạn Thân..."
-                  className="w-full px-3.5 py-2 bg-slate-950/60 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                  placeholder="Ví dụ: Team Dự Án, Nhóm Bạn Thân, Trao Đổi..."
+                  className="w-full px-4 py-2.5 bg-slate-950/60 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Mô tả phòng (tùy chọn)
+              {/* Dòng 2: Chế độ Public và Private */}
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                  Dòng 2: Chế độ phòng
                 </label>
-                <input
-                  type="text"
-                  value={newRoomDesc}
-                  onChange={(e) => setNewRoomDesc(e.target.value)}
-                  placeholder="Ví dụ: Chia sẻ tài liệu và hình ảnh"
-                  className="w-full px-3.5 py-2 bg-slate-950/60 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-                />
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* Option 1: Public */}
+                  <button
+                    type="button"
+                    onClick={() => setNewRoomMode('public')}
+                    className={`p-3 rounded-2xl border text-left transition-all flex flex-col gap-1.5 ${
+                      newRoomMode === 'public'
+                        ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-md shadow-emerald-500/10 ring-1 ring-emerald-500'
+                        : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 font-bold text-sm text-emerald-400">
+                        <Globe className="w-4 h-4" />
+                        <span>Công cộng</span>
+                      </div>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
+                        Public
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      Phòng chat cộng đồng. Ai cũng có thể thấy và vào tự do không cần mã ID.
+                    </p>
+                  </button>
+
+                  {/* Option 2: Private */}
+                  <button
+                    type="button"
+                    onClick={() => setNewRoomMode('private')}
+                    className={`p-3 rounded-2xl border text-left transition-all flex flex-col gap-1.5 ${
+                      newRoomMode === 'private'
+                        ? 'bg-amber-500/15 border-amber-500 text-white shadow-md shadow-amber-500/10 ring-1 ring-amber-500'
+                        : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 font-bold text-sm text-amber-400">
+                        <Lock className="w-4 h-4" />
+                        <span>Riêng tư</span>
+                      </div>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
+                        Private
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      Phòng có mã ID bảo mật. Khi người khác nhập trúng ID sẽ tự động là thành viên.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950/40 border border-slate-800/80 text-[11px] text-slate-400 flex items-center gap-2">
+                <Crown className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>Bạn sẽ tự động là <strong>Trưởng phòng (Owner)</strong> quản lý nhóm này.</span>
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 text-xs text-slate-400 hover:text-white"
+                  className="px-4 py-2 text-xs font-medium text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20"
+                  className="px-5 py-2.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 transition-all active:scale-95"
                 >
                   Tạo phòng ngay
                 </button>
@@ -925,6 +1126,25 @@ export const ChatRoomView: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Room Details & Management Modal ("i" button) */}
+      {showRoomDetails && activeRoom && (
+        <RoomDetailsModal
+          isOpen={showRoomDetails}
+          onClose={() => setShowRoomDetails(false)}
+          room={activeRoom}
+          currentUserUid={currentUser?.uid || ''}
+          currentUserName={userProfile?.displayName || currentUser?.displayName || 'Người dùng'}
+          currentDeviceName={settings.deviceName}
+          messages={messages}
+          onRoomDeleted={() => {
+            setActiveRoomId('public-relay-lounge');
+          }}
+          onRoomLeft={() => {
+            setActiveRoomId('public-relay-lounge');
+          }}
+        />
       )}
     </div>
   );

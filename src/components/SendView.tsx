@@ -5,7 +5,11 @@ import {
   collection, 
   onSnapshot, 
   addDoc, 
-  serverTimestamp 
+  serverTimestamp,
+  query,
+  where,
+  deleteDoc,
+  doc
 } from 'firebase/firestore';
 import { PresenceDevice, DeviceType } from '../types';
 import { 
@@ -25,7 +29,12 @@ import {
   Radio,
   FileUp,
   RefreshCw,
-  Sparkles
+  Sparkles,
+  Trash2,
+  Eye,
+  X,
+  Clock,
+  CheckCircle2
 } from 'lucide-react';
 import { formatFileSize } from '../utils/device';
 import { playSendSound } from '../utils/sound';
@@ -48,6 +57,10 @@ export const SendView: React.FC = () => {
   const [sendingTargetId, setSendingTargetId] = useState<string | null>(null);
   const [transferStatus, setTransferStatus] = useState<{ [peerId: string]: 'idle' | 'sending' | 'success' | 'error' }>({});
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  // Sent history and modal
+  const [sentTransfers, setSentTransfers] = useState<any[]>([]);
+  const [viewingImage, setViewingImage] = useState<string | null>(null);
 
   // Real-time listener for online presence across Internet
   useEffect(() => {
@@ -75,6 +88,29 @@ export const SendView: React.FC = () => {
       setOnlineDevices(devices);
     }, (error) => {
       console.warn('Presence listener notice:', error);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  // Real-time listener for transfers sent by this user
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const q = query(
+      collection(db, 'transfers'),
+      where('senderId', '==', currentUser.uid)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items: any[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setSentTransfers(items.slice(0, 10));
+    }, (err) => {
+      console.warn('Sent transfers listener notice:', err);
     });
 
     return () => unsubscribe();
@@ -155,7 +191,12 @@ export const SendView: React.FC = () => {
       setTransferStatus(prev => ({ ...prev, [target.uid]: 'success' }));
       setStatusMessage(`Đã chuyển thành công đến ${target.deviceName}!`);
 
-      // Reset selection
+      // Clear/Reset selection when sent successfully as requested by user
+      setSelectedFile(null);
+      setFileBase64(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
       if (mode === 'text') {
         setTextContent('');
       }
@@ -169,6 +210,14 @@ export const SendView: React.FC = () => {
       setTransferStatus(prev => ({ ...prev, [target.uid]: 'error' }));
       setStatusMessage('Lỗi khi gửi tệp qua server trung gian. Vui lòng thử lại.');
       setSendingTargetId(null);
+    }
+  };
+
+  const handleDeleteSentItem = async (transferId: string) => {
+    try {
+      await deleteDoc(doc(db, 'transfers', transferId));
+    } catch (e) {
+      console.warn('Failed to delete sent transfer record:', e);
     }
   };
 
@@ -187,9 +236,9 @@ export const SendView: React.FC = () => {
   );
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
+    <div className="w-full max-w-6xl 2xl:max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-6 sm:space-y-8">
       {/* Top Bar / Content Selector (LocalSend Style) */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
@@ -242,35 +291,88 @@ export const SendView: React.FC = () => {
               id="file-dropzone"
               onDragOver={handleDragOver}
               onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
+              onClick={() => !selectedFile && fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-xl p-4 sm:p-6 text-center transition-all ${
                 selectedFile
-                  ? 'border-emerald-500/60 bg-emerald-500/5'
-                  : 'border-slate-700 hover:border-emerald-500/40 bg-slate-950/40 hover:bg-slate-950/60'
+                  ? 'border-emerald-500/60 bg-emerald-500/5 cursor-default'
+                  : 'border-slate-700 hover:border-emerald-500/40 bg-slate-950/40 hover:bg-slate-950/60 cursor-pointer'
               }`}
             >
               {selectedFile ? (
-                <div className="flex flex-col items-center justify-center gap-2">
-                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center">
-                    <FileText className="w-6 h-6" />
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-left">
+                  <div className="flex items-center gap-3.5 min-w-0 w-full sm:w-auto">
+                    {/* Real Image thumbnail if it's an image */}
+                    {fileBase64 && selectedFile.type.startsWith('image/') ? (
+                      <div 
+                        onClick={() => setViewingImage(fileBase64)}
+                        className="relative group/thumb cursor-pointer w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden border border-slate-700 bg-slate-900 shrink-0 shadow-md hover:ring-2 hover:ring-emerald-400 transition-all"
+                        title="Nhấn để xem ảnh phóng to"
+                      >
+                        <img 
+                          src={fileBase64} 
+                          alt={selectedFile.name} 
+                          className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform"
+                        />
+                        <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center transition-opacity">
+                          <Eye className="w-4 h-4 text-white drop-shadow" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-14 h-14 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
+                        <FileText className="w-7 h-7" />
+                      </div>
+                    )}
+
+                    <div className="min-w-0 flex-1">
+                      <span className="text-sm font-bold text-white block truncate max-w-[200px] sm:max-w-md">
+                        {selectedFile.name}
+                      </span>
+                      <span className="text-xs text-slate-400 block mt-0.5">
+                        Kích thước: {formatFileSize(selectedFile.size)} • {selectedFile.type || 'Tệp tin'}
+                      </span>
+                      <span className="text-[11px] text-emerald-400 font-medium block mt-1">
+                        ✓ Sẵn sàng gửi đến thiết bị nhận bên dưới
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-sm font-semibold text-white block">
-                      {selectedFile.name}
-                    </span>
-                    <span className="text-xs text-slate-400">
-                      Kích thước: {formatFileSize(selectedFile.size)} • Nhấn để chọn tệp khác
-                    </span>
+
+                  {/* Action buttons: Delete or Change file */}
+                  <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                    <button
+                      id="remove-selected-file-btn"
+                      type="button"
+                      title="Xóa tệp này khỏi nội dung cần gửi"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedFile(null);
+                        setFileBase64(null);
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Xóa ảnh/tệp</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        fileInputRef.current?.click();
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-medium border border-slate-700 transition-colors"
+                    >
+                      Đổi tệp
+                    </button>
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center gap-2">
+                <div className="flex flex-col items-center justify-center gap-2 py-4">
                   <div className="w-12 h-12 rounded-xl bg-slate-800 text-slate-400 flex items-center justify-center group-hover:text-emerald-400 transition-colors">
                     <FileUp className="w-6 h-6" />
                   </div>
                   <div>
                     <span className="text-sm font-medium text-white block">
-                      Kéo thả tệp tin vào đây hoặc nhấn để duyệt tệp
+                      Kéo thả tệp tin hoặc ảnh vào đây hoặc nhấn để duyệt
                     </span>
                     <span className="text-xs text-slate-400">
                       Hỗ trợ hình ảnh, tài liệu, video ngắn (tối ưu tới 750KB để chuyển tức thời qua Relay)
@@ -305,14 +407,16 @@ export const SendView: React.FC = () => {
       {/* Target Devices (Nearby / Online on Internet Relay) */}
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <Globe className="w-5 h-5 text-teal-400" />
-              Thiết bị trực tuyến qua Server trung gian
-              <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                <Globe className="w-5 h-5 text-teal-400 shrink-0" />
+                <span>Thiết bị trực tuyến qua Server</span>
+              </h2>
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono whitespace-nowrap shrink-0">
                 {onlineDevices.length} thiết bị
               </span>
-            </h2>
+            </div>
             <p className="text-xs text-slate-400 mt-0.5">
               Tất cả các máy đang mở CloudSend qua mạng Internet sẽ hiển thị ở đây
             </p>
@@ -420,6 +524,106 @@ export const SendView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Sent History (Lịch sử các tệp và ảnh bạn đã gửi đi) */}
+      {sentTransfers.length > 0 && (
+        <div className="space-y-3 pt-4 border-t border-slate-800/60">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <UploadCloud className="w-4 h-4 text-emerald-400" />
+              Lịch sử tệp bạn đã gửi ({sentTransfers.length})
+            </h3>
+            <span className="text-[11px] text-slate-400">Ảnh và tệp gần đây</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {sentTransfers.map((item) => {
+              const isImage = item.fileType?.startsWith('image/') && !!item.fileData;
+
+              return (
+                <div
+                  key={item.id}
+                  className="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-3 shadow-sm hover:border-slate-700 transition-all"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    {/* Thumbnail for sent image */}
+                    {isImage ? (
+                      <div 
+                        onClick={() => setViewingImage(item.fileData)}
+                        className="relative group cursor-pointer w-12 h-12 rounded-lg overflow-hidden border border-slate-700 bg-slate-950 shrink-0"
+                        title="Bấm để xem ảnh lớn"
+                      >
+                        <img src={item.fileData} alt={item.fileName} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                        <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                          <Eye className="w-3 h-3 text-white" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-slate-800 text-slate-400 flex items-center justify-center shrink-0">
+                        {item.fileName ? <FileText className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-teal-400" />}
+                      </div>
+                    )}
+
+                    <div className="min-w-0 flex-1">
+                      <span className="text-xs font-semibold text-white block truncate">
+                        {item.fileName || (item.textContent ? `Văn bản: "${item.textContent.slice(0, 20)}..."` : 'Tệp tin')}
+                      </span>
+                      <p className="text-[10px] text-slate-400 truncate mt-0.5">
+                        Tới: <strong className="text-slate-300">{item.receiverName}</strong> • {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    {item.status === 'completed' && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Đã nhận
+                      </span>
+                    )}
+                    {item.status === 'pending' && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 font-semibold">
+                        Đang chờ
+                      </span>
+                    )}
+                    {item.status === 'declined' && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-300 border border-rose-500/20 font-semibold">
+                        Từ chối
+                      </span>
+                    )}
+
+                    <button
+                      type="button"
+                      title="Xóa bản ghi này"
+                      onClick={() => handleDeleteSentItem(item.id)}
+                      className="p-1 rounded text-slate-500 hover:text-rose-400 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Image Preview Modal */}
+      {viewingImage && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm"
+          onClick={() => setViewingImage(null)}
+        >
+          <div className="relative max-w-2xl max-h-[85vh] bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden p-2">
+            <button
+              onClick={() => setViewingImage(null)}
+              className="absolute top-4 right-4 p-2 rounded-full bg-slate-950/80 text-white hover:bg-slate-800 z-10"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <img src={viewingImage} alt="Xem trước" className="max-w-full max-h-[80vh] rounded-xl object-contain mx-auto shadow-2xl" />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

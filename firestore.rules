@@ -61,5 +61,14 @@ service cloud.firestore {
       allow update: if isValidId(transferId);
       allow delete: if isValidId(transferId);
     }
+
+    // Notifications (such as room deletion farewell notices sent to members' Receive view)
+    match /notifications/{notificationId} {
+      allow get: if isValidId(notificationId);
+      allow list: if true;
+      allow create: if isValidId(notificationId);
+      allow update: if isValidId(notificationId);
+      allow delete: if isValidId(notificationId);
+    }
   }
 }
