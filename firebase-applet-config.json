@@ -1,12 +1,12 @@
 {
-  "projectId": "regal-server-kggh3",
-  "appId": "1:419941443909:web:968e0f988b83655d0af62c",
-  "apiKey": "AIzaSyB7iydXpFSwOU7pWzYVSyjhGuTKCuDJi2M",
-  "authDomain": "regal-server-kggh3.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-75966acc-b15d-4b83-9e70-1894a7e05e03",
-  "storageBucket": "regal-server-kggh3.firebasestorage.app",
-  "messagingSenderId": "419941443909",
-  "measurementId": "",
-  "oAuthClientId": "419941443909-i3pvl9gk9hb28t5buhqi5j3q69joqgj8.apps.googleusercontent.com",
+  "projectId": "cloudsend-91aaa",
+  "appId": "1:828478079032:web:fa2ce2431ac812cb7aa6cd",
+  "apiKey": "AIzaSyC3lZ0HRveXiSo4RoUpUD-vpcQ8bLGYJG4",
+  "authDomain": "cloudsend-91aaa.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "cloudsend-91aaa.firebasestorage.app",
+  "messagingSenderId": "828478079032",
+  "measurementId": "G-RMCNQCQ2B1",
+  "oAuthClientId": "",
   "recaptchaSiteKey": ""
 }
