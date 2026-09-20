@@ -99,26 +99,43 @@ export const AuthModal: React.FC = () => {
     }
   };
 
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+
   const handleGoogleLogin = async () => {
     setErrorMsg(null);
     setInfoNotice(null);
     setIsUnauthorizedDomain(false);
     setIsLoading(true);
+    setIsGoogleLoading(true);
+    
+    // Timeout safeguard after 25s so the UI never hangs indefinitely if popup is suppressed/blocked
+    let timerId: NodeJS.Timeout | null = null;
+    const timeoutPromise = new Promise((_, reject) => {
+      timerId = setTimeout(() => {
+        reject(new Error('POPUP_TIMEOUT'));
+      }, 25000);
+    });
+
     try {
-      await loginWithGoogle();
+      await Promise.race([loginWithGoogle(), timeoutPromise]);
     } catch (err: any) {
       const code = err?.code || '';
+      const msg = err?.message || '';
       if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
-        setInfoNotice('Bạn đã đóng cửa sổ đăng nhập Google. Nhấn lại nút bên dưới để tiếp tục đăng nhập bất kỳ lúc nào.');
+        setInfoNotice('Bạn đã đóng cửa sổ đăng nhập Google. Bạn có thể nhấn lại để thử lại hoặc bấm "Vào nhanh ngay lập tức" bên dưới.');
       } else if (code === 'auth/popup-blocked') {
-        setErrorMsg('Trình duyệt đã chặn cửa sổ đăng nhập. Vui lòng cho phép mở popup trên thanh địa chỉ hoặc mở ứng dụng trong một tab mới.');
+        setErrorMsg('Trình duyệt đã chặn cửa sổ đăng nhập. Vui lòng cho phép popup trên thanh địa chỉ, hoặc bấm nút "⚡ Vào nhanh ngay lập tức (Chế độ Khách)" bên dưới để vào app ngay!');
       } else if (code === 'auth/unauthorized-domain') {
         setIsUnauthorizedDomain(true);
+      } else if (msg === 'POPUP_TIMEOUT') {
+        setErrorMsg('Cửa sổ Google phản hồi lâu hoặc bị trình duyệt chặn ngầm. Bạn hãy nhấp vào nút "⚡ Vào nhanh ngay lập tức (Chế độ Khách)" bên dưới để vào dùng ngay mà không cần chờ nhé!');
       } else {
         setErrorMsg('Không thể đăng nhập bằng Google: ' + (err?.message || 'Vui lòng thử lại'));
       }
     } finally {
+      if (timerId) clearTimeout(timerId);
       setIsLoading(false);
+      setIsGoogleLoading(false);
     }
   };
 
@@ -242,30 +259,56 @@ export const AuthModal: React.FC = () => {
               type="button"
               onClick={handleGoogleLogin}
               disabled={isLoading}
-              className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-sm transition-all shadow-lg shadow-emerald-950/50 hover:shadow-emerald-500/25 active:scale-[0.99] disabled:opacity-50 group border border-emerald-400/30"
+              className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-sm transition-all shadow-lg shadow-emerald-950/50 hover:shadow-emerald-500/25 active:scale-[0.99] disabled:opacity-75 group border border-emerald-400/30"
             >
-              <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center shrink-0 shadow-sm">
-                <svg className="w-3 h-3" viewBox="0 0 24 24">
-                  <path
-                    fill="#EA4335"
-                    d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z"
-                  />
-                  <path
-                    fill="#4285F4"
-                    d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 12 0 14.5s.7 4.8 1.9 7.2l3.7-2.9z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.2L1.9 16c1.8 3.7 5.6 7 10.1 7z"
-                  />
-                </svg>
-              </div>
-              <span className="font-bold tracking-wide">Đăng nhập nhanh với Google</span>
+              {isGoogleLoading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin text-white" />
+                  <span className="font-bold tracking-wide">Đang mở Google (Kiểm tra popup)...</span>
+                </>
+              ) : (
+                <>
+                  <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center shrink-0 shadow-sm">
+                    <svg className="w-3 h-3" viewBox="0 0 24 24">
+                      <path
+                        fill="#EA4335"
+                        d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z"
+                      />
+                      <path
+                        fill="#4285F4"
+                        d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"
+                      />
+                      <path
+                        fill="#FBBC05"
+                        d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 12 0 14.5s.7 4.8 1.9 7.2l3.7-2.9z"
+                      />
+                      <path
+                        fill="#34A853"
+                        d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.2L1.9 16c1.8 3.7 5.6 7 10.1 7z"
+                      />
+                    </svg>
+                  </div>
+                  <span className="font-bold tracking-wide">Đăng nhập nhanh với Google</span>
+                </>
+              )}
             </button>
+
+            {isGoogleLoading && (
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsLoading(false);
+                    setIsGoogleLoading(false);
+                    handleGuestLogin();
+                  }}
+                  className="text-xs text-amber-300 hover:underline inline-flex items-center gap-1 font-medium py-1"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Cửa sổ Google lâu mở? Bấm vào đây để vào thẳng app ngay</span>
+                </button>
+              </div>
+            )}
 
             {/* Quick Guest Access (Instant 1-Click Entry) */}
             <button
