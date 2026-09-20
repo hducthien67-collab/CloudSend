@@ -237,6 +237,37 @@ export const SendView: React.FC = () => {
 
   return (
     <div className="w-full max-w-6xl 2xl:max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-6 sm:space-y-8">
+      {/* Your Device Online Status Banner */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <div
+            className="w-12 h-12 rounded-xl flex items-center justify-center text-white shrink-0 shadow-md ring-2 ring-emerald-500/20"
+            style={{ backgroundColor: settings.avatarColor || '#10B981' }}
+          >
+            {renderDeviceIcon(settings.deviceType)}
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm sm:text-base font-bold text-white truncate">
+                {settings.deviceName}
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                Thiết bị của bạn (Đang trực tuyến)
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 truncate mt-0.5">
+              Đang phát sóng trên Cloud Relay • Người khác trên mạng có thể tìm thấy và gửi tệp đến bạn
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 text-xs text-slate-400 self-end sm:self-auto bg-slate-950/60 px-3 py-1.5 rounded-xl border border-slate-800">
+          <span>Tài khoản:</span>
+          <span className="font-semibold text-white">{currentUser?.displayName || currentUser?.email?.split('@')[0]}</span>
+        </div>
+      </div>
+
       {/* Top Bar / Content Selector (LocalSend Style) */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">

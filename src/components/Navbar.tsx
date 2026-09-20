@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { CloudSendLogo } from './CloudSendLogo';
 import { 
@@ -11,12 +11,8 @@ import {
   Monitor, 
   Tablet, 
   Globe, 
-  Radio,
-  ZoomIn,
-  ZoomOut,
-  RotateCcw
+  Radio
 } from 'lucide-react';
-import { getSavedZoom, changeZoomBy, resetZoom } from '../utils/zoom';
 
 interface NavbarProps {
   activeTab: 'send' | 'receive' | 'chat';
@@ -34,18 +30,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   unreadMessagesCount = 0,
 }) => {
   const { currentUser, settings } = useAuth();
-  const [zoomScale, setZoomScale] = useState(1.00);
-
-  useEffect(() => {
-    setZoomScale(getSavedZoom());
-    const handleZoom = (e: any) => {
-      if (e.detail?.zoom) {
-        setZoomScale(e.detail.zoom);
-      }
-    };
-    window.addEventListener('cloudsend-zoom-change', handleZoom);
-    return () => window.removeEventListener('cloudsend-zoom-change', handleZoom);
-  }, []);
 
   const getDeviceIcon = () => {
     switch (settings.deviceType) {
@@ -134,42 +118,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           </nav>
         </div>
 
-        {/* === GÓC BÊN PHẢI: Kích thước Zoom + Thiết bị + Cài đặt + Avatar === */}
+        {/* === GÓC BÊN PHẢI: Thiết bị + Cài đặt + Avatar === */}
         <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-          {/* Zoom Controller - Controls entire web & taskbar size (Ctrl + Mouse Wheel) */}
-          <div 
-            className="hidden lg:flex items-center p-0.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs"
-            title="Điều chỉnh kích thước toàn bộ Web & Taskbar (Hỗ trợ phím Ctrl + Lăn Chuột)"
-          >
-            <button
-              id="zoom-out-btn"
-              type="button"
-              onClick={() => changeZoomBy(-0.05)}
-              className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition-colors"
-              title="Thu nhỏ (-5%)"
-            >
-              <ZoomOut className="w-3.5 h-3.5" />
-            </button>
-            <button
-              id="zoom-reset-btn"
-              type="button"
-              onClick={() => resetZoom()}
-              className="px-2 py-0.5 font-mono text-[11px] font-semibold text-emerald-400 hover:text-white hover:bg-slate-800 rounded transition-colors"
-              title="Nhấn để đặt lại kích thước chuẩn (Ctrl + 0)"
-            >
-              {Math.round(zoomScale * 100)}%
-            </button>
-            <button
-              id="zoom-in-btn"
-              type="button"
-              onClick={() => changeZoomBy(0.05)}
-              className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition-colors"
-              title="Phóng to (+5%)"
-            >
-              <ZoomIn className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
           {/* Current device preview badge */}
           <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800/60 border border-slate-700/60 text-xs text-slate-300">
             <span className="text-emerald-400">{getDeviceIcon()}</span>

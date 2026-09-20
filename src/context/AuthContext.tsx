@@ -29,6 +29,7 @@ interface AuthContextType {
   loginWithGoogle: () => Promise<void>;
   loginWithEmail: (email: string, pass: string) => Promise<void>;
   registerWithEmail: (email: string, pass: string, name: string, deviceName?: string) => Promise<void>;
+  loginAsGuest: (customDisplayName?: string, customDeviceName?: string) => Promise<void>;
   logout: () => Promise<void>;
   updateSettings: (newSettings: Partial<AppSettings>) => Promise<void>;
 }
@@ -36,18 +37,59 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
-  const [userProfile, setUserProfile] = useState<UserDevice | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Restore session synchronously from localStorage to prevent UI flashing or logout on F5
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const saved = localStorage.getItem('cloudsend_custom_session');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed?.uid) return parsed;
+      } catch {
+        // fallback
+      }
+    }
+    return null;
+  });
+
+  const [userProfile, setUserProfile] = useState<UserDevice | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const savedProfile = localStorage.getItem('cloudsend_user_profile');
+    if (savedProfile) {
+      try {
+        const parsed = JSON.parse(savedProfile);
+        if (parsed?.uid) return parsed;
+      } catch {
+        // fallback
+      }
+    }
+    return null;
+  });
+
+  // If a session already exists locally, do not block with full screen loading
+  const [loading, setLoading] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    return !localStorage.getItem('cloudsend_custom_session');
+  });
   
-  const currentUserRef = useRef<AppUser | null>(null);
+  const currentUserRef = useRef<AppUser | null>(currentUser);
   useEffect(() => {
     currentUserRef.current = currentUser;
   }, [currentUser]);
 
+  // Keep user profile persisted in localStorage
+  useEffect(() => {
+    if (userProfile) {
+      try {
+        localStorage.setItem('cloudsend_user_profile', JSON.stringify(userProfile));
+      } catch {
+        // ignore
+      }
+    }
+  }, [userProfile]);
+
   const defaultDeviceType = detectDeviceType();
   const [settings, setSettings] = useState<AppSettings>(() => {
-    // Check localStorage for device settings
     const saved = localStorage.getItem('cloudsend_settings');
     if (saved) {
       try {
@@ -65,7 +107,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   });
 
-  // Always keep a ref to current settings so asynchronous heartbeat intervals never overwrite with stale closures
   const settingsRef = useRef<AppSettings>(settings);
   useEffect(() => {
     settingsRef.current = settings;
@@ -73,7 +114,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const heartbeatTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // Sync settings to localStorage
   useEffect(() => {
     localStorage.setItem('cloudsend_settings', JSON.stringify(settings));
   }, [settings]);
@@ -103,12 +143,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const presenceRef = doc(db, 'presence', uid);
       await deleteDoc(presenceRef);
     } catch {
-      // ignore on unload
+      // ignore
     }
   };
 
   useEffect(() => {
     let isMounted = true;
+
+    // Immediately announce presence if user is restored from localStorage
+    if (currentUser?.uid) {
+      updatePresence(currentUser.uid, userProfile || undefined);
+    }
 
     const restoreCustomSession = async () => {
       const saved = localStorage.getItem('cloudsend_custom_session');
@@ -134,9 +179,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   }));
                 }
                 await updatePresence(session.uid, profileData);
+              } else {
+                // User document not found in Firestore yet, announce with current session
+                await updatePresence(session.uid);
               }
             } catch (err) {
               console.warn('Could not refresh custom session profile from firestore:', err);
+              await updatePresence(session.uid);
             }
           }
         } catch {
@@ -155,7 +204,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
         setCurrentUser(appUser);
         currentUserRef.current = appUser;
-        localStorage.removeItem('cloudsend_custom_session');
+        localStorage.setItem('cloudsend_custom_session', JSON.stringify(appUser));
 
         try {
           const userDocRef = doc(db, 'users', user.uid);
@@ -198,9 +247,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await updatePresence(user.uid, profileData);
         } catch (error) {
           console.error('Error fetching user profile:', error);
+          await updatePresence(user.uid);
         }
       } else {
-        // No Firebase Auth user, check for custom email session
+        // No Firebase Auth user, restore custom session from localStorage
         await restoreCustomSession();
       }
 
@@ -209,25 +259,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    // Heartbeat interval every 20s
+    // Heartbeat interval every 15s to keep online presence solid across internet
     if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
     heartbeatTimer.current = setInterval(() => {
       if (currentUserRef.current) {
         updatePresence(currentUserRef.current.uid);
       }
-    }, 20000);
-
-    const handleUnload = () => {
-      if (currentUserRef.current) {
-        removePresence(currentUserRef.current.uid);
-      }
-    };
-    window.addEventListener('beforeunload', handleUnload);
+    }, 15000);
 
     return () => {
       isMounted = false;
       unsubscribe();
-      window.removeEventListener('beforeunload', handleUnload);
       if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
     };
   }, []);
@@ -373,6 +415,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await updatePresence(uid, newProfile);
   };
 
+  const loginAsGuest = async (customDisplayName?: string, customDeviceName?: string) => {
+    const uid = 'guest_' + generateUid();
+    const devName = customDeviceName?.trim() || settings.deviceName;
+    const dispName = customDisplayName?.trim() || devName || 'Khách ' + Math.floor(1000 + Math.random() * 9000);
+    const guestUser: AppUser = {
+      uid,
+      email: `${uid}@cloudsend.local`,
+      displayName: dispName,
+    };
+
+    localStorage.setItem('cloudsend_custom_session', JSON.stringify(guestUser));
+    setCurrentUser(guestUser);
+    currentUserRef.current = guestUser;
+
+    const profileData: UserDevice = {
+      uid,
+      email: guestUser.email || '',
+      displayName: dispName,
+      deviceName: devName,
+      deviceType: settings.deviceType,
+      avatarColor: settings.avatarColor || getRandomColor(),
+      createdAt: new Date().toISOString(),
+    };
+
+    setUserProfile(profileData);
+    localStorage.setItem('cloudsend_user_profile', JSON.stringify(profileData));
+    await updatePresence(uid, profileData);
+  };
+
   const logout = async () => {
     if (currentUserRef.current) {
       await removePresence(currentUserRef.current.uid);
@@ -382,6 +453,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       heartbeatTimer.current = null;
     }
     localStorage.removeItem('cloudsend_custom_session');
+    localStorage.removeItem('cloudsend_user_profile');
     if (auth.currentUser) {
       await signOut(auth);
     }
@@ -428,6 +500,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginWithGoogle,
         loginWithEmail,
         registerWithEmail,
+        loginAsGuest,
         logout,
         updateSettings,
       }}

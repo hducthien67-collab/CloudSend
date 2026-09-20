@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 
 export const AuthModal: React.FC = () => {
-  const { loginWithGoogle, loginWithEmail, registerWithEmail, settings } = useAuth();
+  const { loginWithGoogle, loginWithEmail, registerWithEmail, loginAsGuest, settings } = useAuth();
   const [isRegistering, setIsRegistering] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -34,6 +34,7 @@ export const AuthModal: React.FC = () => {
   const [deviceName, setDeviceName] = useState(settings.deviceName || '');
   
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isUnauthorizedDomain, setIsUnauthorizedDomain] = useState(false);
   const [infoNotice, setInfoNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -85,9 +86,23 @@ export const AuthModal: React.FC = () => {
     }
   };
 
+  const handleGuestLogin = async () => {
+    setErrorMsg(null);
+    setInfoNotice(null);
+    setIsLoading(true);
+    try {
+      await loginAsGuest(name.trim() || deviceName.trim() || undefined, deviceName.trim() || undefined);
+    } catch (err: any) {
+      setErrorMsg('Không thể tạo phiên sử dụng nhanh: ' + (err?.message || 'Vui lòng thử lại'));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleGoogleLogin = async () => {
     setErrorMsg(null);
     setInfoNotice(null);
+    setIsUnauthorizedDomain(false);
     setIsLoading(true);
     try {
       await loginWithGoogle();
@@ -97,6 +112,8 @@ export const AuthModal: React.FC = () => {
         setInfoNotice('Bạn đã đóng cửa sổ đăng nhập Google. Nhấn lại nút bên dưới để tiếp tục đăng nhập bất kỳ lúc nào.');
       } else if (code === 'auth/popup-blocked') {
         setErrorMsg('Trình duyệt đã chặn cửa sổ đăng nhập. Vui lòng cho phép mở popup trên thanh địa chỉ hoặc mở ứng dụng trong một tab mới.');
+      } else if (code === 'auth/unauthorized-domain') {
+        setIsUnauthorizedDomain(true);
       } else {
         setErrorMsg('Không thể đăng nhập bằng Google: ' + (err?.message || 'Vui lòng thử lại'));
       }
@@ -166,6 +183,50 @@ export const AuthModal: React.FC = () => {
             </div>
           )}
 
+          {/* Unauthorized Domain Explanatory Card (Matches user screenshot) */}
+          {isUnauthorizedDomain && (
+            <div className="p-4 rounded-2xl bg-gradient-to-b from-amber-500/15 to-amber-950/20 border border-amber-500/40 text-amber-200 text-xs space-y-3 animate-in fade-in duration-200 shadow-xl">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" />
+                <div className="space-y-1.5 min-w-0 flex-1">
+                  <div className="font-bold text-amber-300 text-sm flex items-center gap-1.5">
+                    <span>Lỗi auth/unauthorized-domain</span>
+                  </div>
+                  <p className="text-slate-300 leading-relaxed text-[11px]">
+                    Firebase Authentication bảo vệ tài khoản bằng cách chặn đăng nhập Google trên các tên miền chưa được khai báo. Tên miền xem trước hiện tại (<span className="font-mono text-amber-300 bg-amber-950/80 px-1.5 py-0.5 rounded border border-amber-500/30">{typeof window !== 'undefined' ? window.location.hostname : 'run.app'}</span>) chưa có trong danh sách <b>Authorized Domains</b> trên Firebase Console.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-slate-900/80 border border-amber-500/20 space-y-2">
+                <span className="text-[11px] font-semibold text-emerald-400 block">
+                  👉 Giải pháp vào ứng dụng ngay tức thì (Không cần cài đặt):
+                </span>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    type="button"
+                    onClick={handleGuestLogin}
+                    disabled={isLoading}
+                    className="flex-1 py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-all flex items-center justify-center gap-1.5 shadow-md shadow-emerald-950/50"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>⚡ Dùng ngay (Chế độ Khách 1-chạm)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsUnauthorizedDomain(false);
+                      setIsRegistering(false);
+                    }}
+                    className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition-all border border-slate-700 text-center"
+                  >
+                    Dùng Email & Mật khẩu bên dưới
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Error Message */}
           {errorMsg && (
             <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2.5 animate-in fade-in duration-200">
@@ -174,17 +235,17 @@ export const AuthModal: React.FC = () => {
             </div>
           )}
 
-          {/* PRIMARY RECOMMENDED LOGIN: Google Sign-In */}
-          <div className="space-y-2">
+          {/* PRIMARY RECOMMENDED LOGIN: Google Sign-In & 1-Click Guest Access */}
+          <div className="space-y-2.5">
             <button
               id="google-auth-btn"
               type="button"
               onClick={handleGoogleLogin}
               disabled={isLoading}
-              className="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-sm transition-all shadow-lg shadow-emerald-950/50 hover:shadow-emerald-500/25 active:scale-[0.99] disabled:opacity-50 group border border-emerald-400/30"
+              className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-sm transition-all shadow-lg shadow-emerald-950/50 hover:shadow-emerald-500/25 active:scale-[0.99] disabled:opacity-50 group border border-emerald-400/30"
             >
-              <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center shrink-0 shadow-sm">
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
+              <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center shrink-0 shadow-sm">
+                <svg className="w-3 h-3" viewBox="0 0 24 24">
                   <path
                     fill="#EA4335"
                     d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z"
@@ -204,14 +265,19 @@ export const AuthModal: React.FC = () => {
                 </svg>
               </div>
               <span className="font-bold tracking-wide">Đăng nhập nhanh với Google</span>
-              <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-white/20 text-white ml-auto">
-                Khuyên dùng
-              </span>
             </button>
-            <p className="text-[11px] text-slate-400 text-center flex items-center justify-center gap-1.5">
-              <Check className="w-3.5 h-3.5 text-emerald-400" />
-              Đăng nhập 1-chạm bảo mật và liên kết tức thì với phòng chat
-            </p>
+
+            {/* Quick Guest Access (Instant 1-Click Entry) */}
+            <button
+              id="guest-auth-btn"
+              type="button"
+              onClick={handleGuestLogin}
+              disabled={isLoading}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white font-medium text-xs transition-all border border-slate-700 active:scale-[0.99] disabled:opacity-50 shadow-sm"
+            >
+              <Sparkles className="w-4 h-4 text-emerald-400" />
+              <span>⚡ Vào nhanh ngay lập tức (Chế độ Khách / Không cần tài khoản)</span>
+            </button>
           </div>
 
           {/* Divider */}
