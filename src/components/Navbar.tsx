@@ -41,7 +41,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-slate-900/95 border-b border-slate-800 backdrop-blur-md">
+    <header className="sticky top-0 z-40 w-full bg-slate-900 border-b border-slate-800 shadow-md">
       <div className="w-full px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3 sm:gap-6">
         {/* === GÓC BÊN TRÁI: Logo + Tên + Cụm Tab chuyển đổi === */}
         <div className="flex items-center gap-3 sm:gap-6 min-w-0">

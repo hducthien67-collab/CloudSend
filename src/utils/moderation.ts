@@ -62,12 +62,17 @@ export interface ImageModerationResult {
 export async function scanImageHeuristics(dataUrl: string, fileName = ''): Promise<ImageModerationResult> {
   // Check suspicious filenames first
   const lowerName = fileName.toLowerCase();
-  const blockedKeywords = ['porn', 'hentai', 'nsfw', 'sex', 'xxx', 'nude', 'jav', 'erotic', 'gore_extreme'];
+  const blockedKeywords = [
+    'porn', 'hentai', 'nsfw', 'sex', 'xxx', 'nude', 'jav', 'erotic', 'gore_extreme',
+    '18+', '18plus', 'nudity', 'boobs', 'vagina', 'penis', 'cleavage', 'lon', 'buoi',
+    'cac', 'khoathan', 'khoa_than', 'dam_duc', 'sexy_hot', 'onlyfans', 'strip',
+    'bikini_hot', 'adult', 'sex_toy', 'uncensored', 'clit', 'co_be', 'khe_nguc', 'anh_nong'
+  ];
   for (const kw of blockedKeywords) {
     if (lowerName.includes(kw)) {
       return {
         safe: false,
-        reason: 'Hình ảnh bị từ chối do tên tệp chứa từ khóa 18+ hoặc nội dung nhạy cảm.',
+        reason: 'Ảnh đã tự động bị hủy và xóa khỏi danh sách gửi do tên tệp chứa từ khóa 18+ hoặc nội dung nhạy cảm.',
         category: 'nsfw_sex'
       };
     }
@@ -114,16 +119,25 @@ export async function scanImageHeuristics(dataUrl: string, fileName = ''): Promi
             const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
             const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
 
-            // Skin color condition
-            const isSkin = (
-              r > 95 && g > 40 && b > 20 &&
-              Math.max(r, g, b) - Math.min(r, g, b) > 15 &&
-              Math.abs(r - g) > 15 &&
+            // Skin color condition (real human skin + bright/anime tones)
+            const isStandardSkin = (
+              r > 85 && g > 35 && b > 20 &&
+              Math.max(r, g, b) - Math.min(r, g, b) > 12 &&
+              Math.abs(r - g) > 10 &&
               r > g && r > b &&
-              cb >= 77 && cb <= 130 &&
-              cr >= 132 && cr <= 178 &&
-              yVal > 80
+              cb >= 75 && cb <= 135 &&
+              cr >= 128 && cr <= 185 &&
+              yVal > 65
             );
+
+            const isFairSkin = (
+              r > 185 && g > 130 && b > 105 &&
+              r > g && g >= b &&
+              (r - b) > 20 &&
+              (r - g) < 80
+            );
+
+            const isSkin = isStandardSkin || isFairSkin;
 
             if (isSkin) {
               skinPixelCount++;
@@ -150,11 +164,11 @@ export async function scanImageHeuristics(dataUrl: string, fileName = ''): Promi
         const centralRatio = centralSkinCount / (60 * 60);
         const goreRatio = extremeBloodCount / totalPixels;
 
-        // Condition 1: High skin ratio indicating heavy nudity / sex
-        if (skinRatio > 0.62 || (skinRatio > 0.48 && centralRatio > 0.65)) {
+        // Condition 1: High skin ratio indicating heavy nudity / sex / 18+
+        if (skinRatio > 0.38 || (skinRatio > 0.25 && centralRatio > 0.38) || centralRatio > 0.48) {
           resolve({
             safe: false,
-            reason: 'Hình ảnh bị chặn vì phát hiện có yếu tố 18+ mạnh (nội dung nhạy cảm / khiêu dâm).',
+            reason: 'Ảnh đã tự động bị hủy và xóa khỏi danh sách gửi vì phát hiện nội dung nhạy cảm 18+ (khỏa thân / khiêu dâm).',
             category: 'nsfw_sex'
           });
           return;
@@ -164,7 +178,7 @@ export async function scanImageHeuristics(dataUrl: string, fileName = ''): Promi
         if (goreRatio > 0.28) {
           resolve({
             safe: false,
-            reason: 'Hình ảnh bị chặn vì có yếu tố bạo lực máu me kinh dị quá mức.',
+            reason: 'Ảnh đã tự động bị hủy và xóa khỏi danh sách gửi vì có yếu tố bạo lực máu me kinh dị quá mức.',
             category: 'extreme_gore'
           });
           return;
@@ -198,24 +212,29 @@ export async function moderateUploadedImage(dataUrl: string, fileName = ''): Pro
 
   // 2. Try calling server-side moderation if endpoint exists
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
+
     const res = await fetch('/api/moderate-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: dataUrl, fileName })
+      body: JSON.stringify({ image: dataUrl, fileName }),
+      signal: controller.signal
     });
+    clearTimeout(timeoutId);
 
     if (res.ok) {
       const data = await res.json();
       if (data && data.safe === false) {
         return {
           safe: false,
-          reason: data.reason || 'Hình ảnh vi phạm quy chuẩn nội dung (18+ hoặc bạo lực máu me cực đoan).',
+          reason: data.reason || 'Ảnh đã tự động bị hủy và xóa khỏi nội dung gửi vì phát hiện vi phạm tiêu chuẩn 18+ / nhạy cảm.',
           category: data.category || 'nsfw_sex'
         };
       }
     }
   } catch {
-    // If server is not reachable or running SPA mode, fall back to local heuristic scan safely
+    // If server is not reachable, timed out or running SPA mode, fall back to local heuristic scan safely
   }
 
   return { safe: true, category: 'clean' };

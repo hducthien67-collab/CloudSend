@@ -85,7 +85,20 @@ export const SendView: React.FC = () => {
         }
       });
 
-      setOnlineDevices(devices);
+      // Avoid re-rendering whole SendView if device list is identical
+      setOnlineDevices((prev) => {
+        if (prev.length === devices.length) {
+          const isIdentical = prev.every((p, i) => 
+            p.uid === devices[i]?.uid &&
+            p.deviceName === devices[i]?.deviceName &&
+            p.deviceType === devices[i]?.deviceType &&
+            p.avatarColor === devices[i]?.avatarColor &&
+            p.status === devices[i]?.status
+          );
+          if (isIdentical) return prev;
+        }
+        return devices;
+      });
     }, (error) => {
       console.warn('Presence listener notice:', error);
     });

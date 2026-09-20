@@ -39,3 +39,29 @@ html, body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(16, 185, 129, 0.8);
 }
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Performance optimizations for mobile & desktop */
+main, div {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Chat feed hardware-accelerated smooth scrolling */
+.chat-scroll-container {
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: auto;
+  overscroll-behavior-y: contain;
+  transform: translateZ(0);
+  will-change: scroll-position;
+}
+
+/* Optimize message layout recalculations */
+.chat-bubble-item {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 80px;
+}

@@ -90,17 +90,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const defaultDeviceType = detectDeviceType();
   const [settings, setSettings] = useState<AppSettings>(() => {
+    const detected = detectDeviceType();
     const saved = localStorage.getItem('cloudsend_settings');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        return {
+          ...parsed,
+          deviceType: detected, // Always enforce auto-detected device
+        };
       } catch {
         // fallback
       }
     }
     return {
-      deviceName: generateDefaultDeviceName(defaultDeviceType),
-      deviceType: defaultDeviceType,
+      deviceName: generateDefaultDeviceName(detected),
+      deviceType: detected,
       avatarColor: getRandomColor(),
       autoAccept: false,
       soundEnabled: true,
@@ -111,6 +116,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
+
+  // Keep deviceType synchronized if window dimensions / hardware context changes
+  useEffect(() => {
+    const handleResize = () => {
+      const current = detectDeviceType();
+      if (current !== settingsRef.current.deviceType) {
+        setSettings(prev => ({ ...prev, deviceType: current }));
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const heartbeatTimer = useRef<NodeJS.Timeout | null>(null);
 
@@ -259,17 +276,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    // Heartbeat interval every 15s to keep online presence solid across internet
+    // Heartbeat interval every 45s (when tab is active) to eliminate lag and reduce unnecessary Firestore writes
     if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
     heartbeatTimer.current = setInterval(() => {
-      if (currentUserRef.current) {
+      if (currentUserRef.current && typeof document !== 'undefined' && !document.hidden) {
         updatePresence(currentUserRef.current.uid);
       }
-    }, 15000);
+    }, 45000);
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && !document.hidden && currentUserRef.current) {
+        updatePresence(currentUserRef.current.uid);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       isMounted = false;
       unsubscribe();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
     };
   }, []);
@@ -463,8 +488,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateSettings = async (newSettings: Partial<AppSettings>) => {
+    const detectedType = detectDeviceType();
     setSettings((prev) => {
-      const updated = { ...prev, ...newSettings };
+      const updated = { 
+        ...prev, 
+        ...newSettings,
+        deviceType: detectedType // Locked to hardware detected type
+      };
       return updated;
     });
 
@@ -477,7 +507,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: userProfile?.createdAt || new Date().toISOString(),
         ...(userProfile || {}),
         deviceName: newSettings.deviceName ?? settings.deviceName,
-        deviceType: newSettings.deviceType ?? settings.deviceType,
+        deviceType: detectedType,
         avatarColor: newSettings.avatarColor ?? settings.avatarColor,
       };
       setUserProfile(updatedProfile);

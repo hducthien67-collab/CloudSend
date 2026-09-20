@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
@@ -20,15 +21,16 @@ function moderationPlugin(): Plugin {
         });
         req.on('end', async () => {
           try {
-            const { image } = JSON.parse(body || '{}');
-            if (!process.env.GEMINI_API_KEY || !image) {
+            const { image, fileName } = JSON.parse(body || '{}');
+            const apiKey = process.env.GEMINI_API_KEY;
+            if (!apiKey || !image) {
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify({ safe: true, category: 'clean' }));
               return;
             }
 
             const { GoogleGenAI } = await import('@google/genai');
-            const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+            const ai = new GoogleGenAI({ apiKey });
 
             const match = image.match(/^data:([^;]+);base64,(.+)$/);
             if (!match) {
@@ -52,16 +54,16 @@ function moderationPlugin(): Plugin {
                       },
                     },
                     {
-                      text: `Evaluate this image strictly for two criteria:
-1. Is it strong 18+ content (explicit pornography, sex acts, nudity)?
+                      text: `Evaluate this image (filename: "${fileName || 'image'}") strictly for safety:
+1. Is it 18+ content (nudity, pornography, sex acts, genital exposure, sexually explicit poses, underwear/erotic shots)?
 2. Is it extreme visceral gore (severe mutilation, excessive arterial bloodshed)?
-Note: Normal horror (e.g. Halloween, mild fictional monsters, dark spooky art) is SAFE and ALLOWED.
+Note: Normal horror/halloween/dark art without extreme bloodshed is SAFE.
 
-Return strictly JSON:
+Return strictly valid JSON:
 {
   "safe": boolean,
   "category": "nsfw_sex" | "extreme_gore" | "clean",
-  "reason": "Brief Vietnamese explanation if unsafe, or empty string"
+  "reason": "Giải thích ngắn bằng tiếng Việt nếu không an toàn, ví dụ: 'Ảnh đã tự động bị hủy và xóa vì phát hiện nội dung 18+/nhạy cảm.'"
 }`,
                     },
                   ],

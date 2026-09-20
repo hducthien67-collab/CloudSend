@@ -72,6 +72,10 @@ export interface ChatMessage {
   createdAt: string;
   timestamp?: number;
   serverTimestamp?: any;
+  isSelfDestruct?: boolean;
+  selfDestructDuration?: number; // 0 for view-once, > 0 for seconds (e.g. 10, 30)
+  viewedBy?: string[];
+  destroyed?: boolean;
 }
 
 export interface DirectTransfer {

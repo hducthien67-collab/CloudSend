@@ -21,7 +21,8 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
-  Check
+  Check,
+  Loader2
 } from 'lucide-react';
 
 export const AuthModal: React.FC = () => {

@@ -91,3 +91,54 @@ export function playPopSound() {
     // Ignore
   }
 }
+
+export function playDestructSound() {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    
+    const now = ctx.currentTime;
+    osc.frequency.setValueAtTime(320, now);
+    osc.frequency.exponentialRampToValueAtTime(80, now + 0.22);
+    
+    gain.gain.setValueAtTime(0.09, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    osc.start(now);
+    osc.stop(now + 0.26);
+  } catch {
+    // Ignore
+  }
+}
+
+export function playShieldAlertSound() {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    
+    const now = ctx.currentTime;
+    osc.frequency.setValueAtTime(440, now);
+    osc.frequency.setValueAtTime(330, now + 0.08);
+    
+    gain.gain.setValueAtTime(0.08, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    osc.start(now);
+    osc.stop(now + 0.21);
+  } catch {
+    // Ignore
+  }
+}
+

@@ -13,7 +13,8 @@ import {
   getDocs,
   where,
   limit,
-  serverTimestamp
+  serverTimestamp,
+  deleteDoc
 } from 'firebase/firestore';
 import { ChatRoom, ChatMessage, ChatAttachment, RoomMember } from '../types';
 import { 
@@ -39,12 +40,18 @@ import {
   Lock,
   Globe,
   Crown,
-  AlertTriangle
+  AlertTriangle,
+  ChevronDown,
+  Flame,
+  Clock,
+  ShieldAlert,
+  Trash2
 } from 'lucide-react';
 import { formatFileSize } from '../utils/device';
-import { playSendSound, playReceiveSound } from '../utils/sound';
+import { playSendSound, playReceiveSound, playDestructSound, playShieldAlertSound } from '../utils/sound';
 import { censorProfanity, moderateUploadedImage } from '../utils/moderation';
 import { RoomDetailsModal } from './RoomDetailsModal';
+import { SelfDestructViewerModal } from './SelfDestructViewerModal';
 
 export const ChatRoomView: React.FC = () => {
   const { currentUser, userProfile, settings } = useAuth();
@@ -67,6 +74,11 @@ export const ChatRoomView: React.FC = () => {
   // Moderation warning notification
   const [moderationWarning, setModerationWarning] = useState<string | null>(null);
 
+  // Self-destruct image mode ('off' | 'view_once' | '10s' | '30s')
+  const [selfDestructMode, setSelfDestructMode] = useState<'off' | 'view_once' | '10s' | '30s'>('off');
+  const [showSelfDestructMenu, setShowSelfDestructMenu] = useState(false);
+  const [activeDestructMessage, setActiveDestructMessage] = useState<ChatMessage | null>(null);
+
   // Multiple file attachments in chat
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [isCompressing, setIsCompressing] = useState(false);
@@ -77,11 +89,33 @@ export const ChatRoomView: React.FC = () => {
   const [copiedCode, setCopiedCode] = useState(false);
   const [mobileTab, setMobileTab] = useState<'rooms' | 'chat'>('chat');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
+  const [showScrollBottomBtn, setShowScrollBottomBtn] = useState(false);
   const initialLoadRef = useRef(true);
 
-  // Auto-scroll to bottom of messages
+  // Optimized scroll to bottom of messages
   const scrollToBottom = (smooth = true) => {
-    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior: smooth ? 'smooth' : 'auto'
+      });
+      setShowScrollBottomBtn(false);
+      isNearBottomRef.current = true;
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
+    }
+  };
+
+  // Track scroll position to prevent auto-scrolling when user is reading past messages
+  const handleScrollChat = () => {
+    const el = chatContainerRef.current;
+    if (!el) return;
+    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const nearBottom = distanceToBottom < 120;
+    isNearBottomRef.current = nearBottom;
+    setShowScrollBottomBtn(!nearBottom && el.scrollHeight > el.clientHeight + 200);
   };
 
   // Listen to available rooms
@@ -190,8 +224,15 @@ export const ChatRoomView: React.FC = () => {
         playReceiveSound();
       }
 
+      const isFirst = initialLoadRef.current;
       initialLoadRef.current = false;
-      setTimeout(() => scrollToBottom(false), 80);
+      
+      // Only auto-scroll to bottom if user is already near bottom or it's the initial load
+      if (isFirst || isNearBottomRef.current) {
+        requestAnimationFrame(() => {
+          scrollToBottom(false);
+        });
+      }
     });
 
     return () => unsubscribe();
@@ -306,12 +347,13 @@ export const ChatRoomView: React.FC = () => {
           // Content Moderation check for 18+ and extreme gore
           const modResult = await moderateUploadedImage(processed.data, file.name);
           if (!modResult.safe) {
+            playShieldAlertSound();
             setModerationWarning(
               modResult.reason || 
-              `Ảnh "${file.name}" đã bị từ chối do vi phạm quy chuẩn nội dung (Chứa yếu tố 18+ nhạy cảm hoặc bạo lực máu me quá mức).`
+              `🚫 ĐÃ TỰ ĐỘNG HỦY VÀ XÓA ẢNH KHỎI NỘI DUNG CẦN GỬI: Ảnh "${file.name}" đã tự hủy do phát hiện vi phạm tiêu chuẩn 18+ (nội dung nhạy cảm/khiêu dâm).`
             );
-            setTimeout(() => setModerationWarning(null), 7000);
-            continue; // Skip this file immediately!
+            setTimeout(() => setModerationWarning(null), 8000);
+            continue; // Skip this file immediately - auto deleted from sending list!
           }
           newAttachments.push(processed);
         } else {
@@ -397,11 +439,43 @@ export const ChatRoomView: React.FC = () => {
     // Filter profanity / vulgar language: replace with ***
     const { cleanText } = censorProfanity(inputText.trim());
     const textToSend = cleanText;
-    const attachmentsToSend = [...attachments];
+    
+    // Safety check on outgoing attachments: auto-purge any 18+ images
+    const safeAttachments: ChatAttachment[] = [];
+    const purgedNames: string[] = [];
+
+    for (const att of attachments) {
+      if (att.type.startsWith('image/')) {
+        const check = await moderateUploadedImage(att.data, att.name);
+        if (!check.safe) {
+          purgedNames.push(att.name);
+          continue; // Automatically purged from payload!
+        }
+      }
+      safeAttachments.push(att);
+    }
+
+    if (purgedNames.length > 0) {
+      playShieldAlertSound();
+      setModerationWarning(
+        `🚫 ĐÃ TỰ ĐỘNG HỦY VÀ XÓA ${purgedNames.length} ẢNH KHỎI NỘI DUNG CẦN GỬI: Ảnh [${purgedNames.join(', ')}] vi phạm tiêu chuẩn 18+ và đã bị loại bỏ hoàn toàn.`
+      );
+      setAttachments(safeAttachments);
+      setTimeout(() => setModerationWarning(null), 8000);
+      if (safeAttachments.length === 0 && !textToSend) {
+        return; // Nothing left to send
+      }
+    }
+
+    const attachmentsToSend = [...safeAttachments];
+    const isSelfDestruct = selfDestructMode !== 'off' && attachmentsToSend.length > 0;
+    const selfDestructDuration = selfDestructMode === '10s' ? 10 : selfDestructMode === '30s' ? 30 : 0;
 
     // Reset input immediately for responsive feel
     setInputText('');
     setAttachments([]);
+    setSelfDestructMode('off');
+    setShowSelfDestructMenu(false);
 
     try {
       const now = new Date();
@@ -415,6 +489,13 @@ export const ChatRoomView: React.FC = () => {
         timestamp: now.getTime(),
         serverTimestamp: serverTimestamp(),
       };
+
+      // Self-destruct message flags
+      if (isSelfDestruct) {
+        messagePayload.isSelfDestruct = true;
+        messagePayload.selfDestructDuration = selfDestructDuration;
+        messagePayload.viewedBy = [];
+      }
 
       // Backwards compatibility with single file fields
       if (attachmentsToSend.length === 1) {
@@ -437,6 +518,16 @@ export const ChatRoomView: React.FC = () => {
       scrollToBottom(true);
     } catch (err) {
       console.error('Send message error:', err);
+    }
+  };
+
+  // Delete message (destruct manually or upon self-destruct trigger)
+  const handleDeleteMessage = async (messageId: string) => {
+    try {
+      await deleteDoc(doc(db, 'rooms', activeRoomId, 'messages', messageId));
+      playDestructSound();
+    } catch (err) {
+      console.error('Delete message error:', err);
     }
   };
 
@@ -724,7 +815,11 @@ export const ChatRoomView: React.FC = () => {
         )}
 
         {/* Message Feed */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+        <div 
+          ref={chatContainerRef}
+          onScroll={handleScrollChat}
+          className="flex-1 chat-scroll-container p-4 sm:p-6 space-y-4 relative"
+        >
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-3">
               <div className="w-14 h-14 rounded-2xl bg-slate-800 text-slate-500 flex items-center justify-center">
@@ -760,7 +855,7 @@ export const ChatRoomView: React.FC = () => {
               return (
                 <div
                   key={msg.id}
-                  className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group`}
+                  className={`chat-bubble-item flex flex-col ${isMe ? 'items-end' : 'items-start'} group`}
                 >
                   {/* Sender Name & Device */}
                   <div className="flex items-center gap-2 mb-1.5 px-1 text-xs text-slate-400">
@@ -780,6 +875,17 @@ export const ChatRoomView: React.FC = () => {
                           : '';
                       })()}
                     </span>
+                    {/* Delete button on hover for sender or owner */}
+                    {(isMe || activeRoom?.ownerId === currentUser?.uid) && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteMessage(msg.id)}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all ml-1"
+                        title="Xóa / tiêu hủy tin nhắn này"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
 
                   {/* Message Bubble - Enriched & Enlarge */}
@@ -790,40 +896,69 @@ export const ChatRoomView: React.FC = () => {
                         : 'bg-slate-800 text-slate-100 rounded-tl-sm border border-slate-700/60'
                     }`}
                   >
-                    {/* Attached Images Grid (One or Multiple Images, Larger display) */}
-                    {imageAttachments.length > 0 && (
-                      <div className={`grid gap-2.5 ${
-                        imageAttachments.length === 1 
-                          ? 'grid-cols-1' 
-                          : imageAttachments.length === 2 
-                            ? 'grid-cols-2' 
-                            : 'grid-cols-2 sm:grid-cols-3'
-                      }`}>
-                        {imageAttachments.map((img, idx) => (
-                          <div key={idx} className="relative group rounded-xl overflow-hidden bg-black/40 border border-white/10 shadow-sm">
-                            <img
-                              src={img.data}
-                              alt={img.name}
-                              className={`w-full ${imageAttachments.length === 1 ? 'max-h-96 sm:max-h-[480px]' : 'h-48 sm:h-60'} object-cover hover:scale-105 transition-transform duration-200 cursor-pointer`}
-                              onClick={() => window.open(img.data, '_blank')}
-                            />
-                            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent p-2.5 flex items-center justify-between opacity-90 group-hover:opacity-100 transition-opacity">
-                              <span className="text-xs text-white truncate max-w-[150px] font-medium drop-shadow">
-                                {img.name}
-                              </span>
-                              <a
-                                href={img.data}
-                                download={img.name}
-                                className="p-1.5 rounded-lg bg-black/40 hover:bg-emerald-600 text-white transition-colors"
-                                title="Tải ảnh về máy"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <Download className="w-3.5 h-3.5" />
-                              </a>
-                            </div>
-                          </div>
-                        ))}
+                    {/* Self-Destruct Notice Badge */}
+                    {msg.isSelfDestruct && (
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-orange-500/20 border border-orange-500/40 text-orange-200 text-xs font-semibold w-fit">
+                        <Flame className="w-3.5 h-3.5 text-orange-400 animate-pulse" />
+                        <span>{msg.selfDestructDuration ? `Ảnh tự hủy sau ${msg.selfDestructDuration}s` : 'Ảnh bảo mật (Xem 1 lần)'}</span>
                       </div>
+                    )}
+
+                    {/* Attached Images Grid OR Protected Self-Destruct Card */}
+                    {imageAttachments.length > 0 && (
+                      msg.isSelfDestruct ? (
+                        <div
+                          onClick={() => setActiveDestructMessage(msg)}
+                          className="cursor-pointer group/destruct rounded-2xl overflow-hidden bg-slate-950/80 border border-orange-500/40 p-5 flex flex-col items-center justify-center text-center space-y-2.5 hover:border-orange-500 transition-all hover:shadow-lg hover:shadow-orange-500/10"
+                        >
+                          <div className="w-12 h-12 rounded-2xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center text-orange-400 group-hover/destruct:scale-110 transition-transform shadow-lg shadow-orange-500/20">
+                            <Flame className="w-6 h-6 animate-bounce" />
+                          </div>
+                          <div>
+                            <p className="text-xs sm:text-sm font-bold text-orange-200">
+                              {msg.selfDestructDuration ? `Ảnh tự hủy (${msg.selfDestructDuration} giây)` : 'Ảnh tự hủy (Xem 1 lần)'}
+                            </p>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              Nhấn để mở xem ({imageAttachments.length} ảnh) • Tự động tiêu hủy sau khi xem
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className={`grid gap-2.5 ${
+                          imageAttachments.length === 1 
+                            ? 'grid-cols-1' 
+                            : imageAttachments.length === 2 
+                              ? 'grid-cols-2' 
+                              : 'grid-cols-2 sm:grid-cols-3'
+                        }`}>
+                          {imageAttachments.map((img, idx) => (
+                            <div key={idx} className="relative group rounded-xl overflow-hidden bg-black/40 border border-white/10 shadow-sm">
+                              <img
+                                src={img.data}
+                                alt={img.name}
+                                loading="lazy"
+                                decoding="async"
+                                className={`w-full ${imageAttachments.length === 1 ? 'max-h-96 sm:max-h-[480px]' : 'h-48 sm:h-60'} object-cover hover:opacity-95 transition-opacity cursor-pointer`}
+                                onClick={() => window.open(img.data, '_blank')}
+                              />
+                              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent p-2.5 flex items-center justify-between opacity-90 group-hover:opacity-100 transition-opacity">
+                                <span className="text-xs text-white truncate max-w-[150px] font-medium drop-shadow">
+                                  {img.name}
+                                </span>
+                                <a
+                                  href={img.data}
+                                  download={img.name}
+                                  className="p-1.5 rounded-lg bg-black/40 hover:bg-emerald-600 text-white transition-colors"
+                                  title="Tải ảnh về máy"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                </a>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )
                     )}
 
                     {/* Non-image File Attachments */}
@@ -868,6 +1003,20 @@ export const ChatRoomView: React.FC = () => {
             })
           )}
           <div ref={messagesEndRef} />
+
+          {/* Quick Jump to Bottom Floating Button */}
+          {showScrollBottomBtn && (
+            <button
+              id="scroll-to-bottom-btn"
+              type="button"
+              onClick={() => scrollToBottom(true)}
+              className="sticky bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-slate-800/95 hover:bg-emerald-600 text-slate-200 hover:text-white border border-slate-700 hover:border-emerald-500 shadow-xl shadow-black/40 text-xs font-semibold backdrop-blur-sm transition-all animate-in fade-in slide-in-from-bottom-2 duration-150 z-20 cursor-pointer"
+              title="Cuộn xuống tin nhắn mới nhất"
+            >
+              <ChevronDown className="w-4 h-4 text-emerald-400 hover:text-white animate-bounce" />
+              <span>Tin nhắn mới nhất</span>
+            </button>
+          )}
         </div>
 
         {/* Multiple File/Image Preview Bar directly above input */}
@@ -942,6 +1091,28 @@ export const ChatRoomView: React.FC = () => {
           </div>
         )}
 
+        {/* Self-Destruct Active Indicator Banner */}
+        {selfDestructMode !== 'off' && (
+          <div className="mx-4 mb-2 px-3.5 py-2 rounded-xl bg-orange-500/15 border border-orange-500/30 text-orange-200 text-xs flex items-center justify-between animate-in fade-in duration-150">
+            <div className="flex items-center gap-2">
+              <Flame className="w-4 h-4 text-orange-400 animate-pulse" />
+              <span>
+                Chế độ Ảnh tự hủy đang bật:{' '}
+                <strong className="text-orange-300">
+                  {selfDestructMode === 'view_once' ? 'Xem 1 lần rồi biến mất vĩnh viễn' : `Tự tiêu hủy sau ${selfDestructMode === '10s' ? '10 giây' : '30 giây'}`}
+                </strong>
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelfDestructMode('off')}
+              className="text-orange-400 hover:text-white font-semibold underline text-xs"
+            >
+              Tắt tự hủy
+            </button>
+          </div>
+        )}
+
         {/* Input Bar */}
         <div className="p-4 border-t border-slate-800 bg-slate-950/50">
           <form onSubmit={handleSendMessage} className="flex items-center gap-2 sm:gap-3">
@@ -985,6 +1156,87 @@ export const ChatRoomView: React.FC = () => {
             >
               <Paperclip className="w-5 h-5" />
             </button>
+
+            {/* Self-Destruct Image Toggle Button */}
+            <div className="relative">
+              <button
+                id="toggle-self-destruct-btn"
+                type="button"
+                onClick={() => setShowSelfDestructMenu(!showSelfDestructMenu)}
+                title="Chế độ Ảnh tự hủy (Xem 1 lần hoặc hẹn giờ tự tiêu hủy)"
+                className={`p-3 rounded-xl border transition-all shrink-0 flex items-center gap-1.5 ${
+                  selfDestructMode !== 'off'
+                    ? 'bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 border-orange-500/50 shadow-md shadow-orange-500/20'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-orange-400 border-slate-700'
+                }`}
+              >
+                <Flame className={`w-5 h-5 ${selfDestructMode !== 'off' ? 'animate-bounce text-orange-400' : ''}`} />
+                {selfDestructMode !== 'off' && (
+                  <span className="text-xs font-bold hidden sm:inline">
+                    {selfDestructMode === 'view_once' ? '1 lần' : selfDestructMode === '10s' ? '10s' : '30s'}
+                  </span>
+                )}
+              </button>
+
+              {/* Dropdown Options */}
+              {showSelfDestructMenu && (
+                <div className="absolute bottom-full mb-2 left-0 w-52 bg-slate-900 border border-slate-700 rounded-2xl p-2 shadow-2xl z-40 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="px-2.5 py-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-800">
+                    <Flame className="w-3.5 h-3.5 text-orange-400" />
+                    <span>Ảnh tự hủy</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setSelfDestructMode('off'); setShowSelfDestructMenu(false); }}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${
+                      selfDestructMode === 'off' ? 'bg-slate-800 text-white font-semibold' : 'text-slate-300 hover:bg-slate-800/60'
+                    }`}
+                  >
+                    <span>Tắt (Lưu thường)</span>
+                    {selfDestructMode === 'off' && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setSelfDestructMode('view_once'); setShowSelfDestructMenu(false); }}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${
+                      selfDestructMode === 'view_once' ? 'bg-orange-500/20 text-orange-300 font-semibold border border-orange-500/30' : 'text-slate-300 hover:bg-slate-800/60'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Flame className="w-3.5 h-3.5 text-orange-400" />
+                      Xem 1 lần (View-Once)
+                    </span>
+                    {selfDestructMode === 'view_once' && <Check className="w-3.5 h-3.5 text-orange-400" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setSelfDestructMode('10s'); setShowSelfDestructMenu(false); }}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${
+                      selfDestructMode === '10s' ? 'bg-orange-500/20 text-orange-300 font-semibold border border-orange-500/30' : 'text-slate-300 hover:bg-slate-800/60'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-orange-400" />
+                      Tự hủy sau 10 giây
+                    </span>
+                    {selfDestructMode === '10s' && <Check className="w-3.5 h-3.5 text-orange-400" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setSelfDestructMode('30s'); setShowSelfDestructMenu(false); }}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${
+                      selfDestructMode === '30s' ? 'bg-orange-500/20 text-orange-300 font-semibold border border-orange-500/30' : 'text-slate-300 hover:bg-slate-800/60'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-orange-400" />
+                      Tự hủy sau 30 giây
+                    </span>
+                    {selfDestructMode === '30s' && <Check className="w-3.5 h-3.5 text-orange-400" />}
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Text Input with Paste listener */}
             <input
@@ -1144,6 +1396,16 @@ export const ChatRoomView: React.FC = () => {
           onRoomLeft={() => {
             setActiveRoomId('public-relay-lounge');
           }}
+        />
+      )}
+
+      {/* Safe Self-Destruct Image Viewer Modal */}
+      {activeDestructMessage && (
+        <SelfDestructViewerModal
+          isOpen={!!activeDestructMessage}
+          message={activeDestructMessage}
+          onClose={() => setActiveDestructMessage(null)}
+          onDestruct={handleDeleteMessage}
         />
       )}
     </div>
