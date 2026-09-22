@@ -12,7 +12,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db, googleProvider, handleFirestoreError, OperationType } from '../firebase/config';
 import { UserDevice, DeviceType, AppSettings, AppUser } from '../types';
-import { detectDeviceType, generateDefaultDeviceName, getRandomColor } from '../utils/device';
+import { detectDeviceType, generateDefaultDeviceName, getRandomColor, isSmartTv, getRecommendedTvDpi } from '../utils/device';
 import { 
   CustomAuthAccount, 
   hashPassword, 
@@ -20,6 +20,7 @@ import {
   generateSalt, 
   generateUid 
 } from '../utils/authHelper';
+import { checkUserBanStatus } from '../utils/devModeration';
 
 interface AuthContextType {
   currentUser: AppUser | null;
@@ -90,25 +91,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const defaultDeviceType = detectDeviceType();
   const [settings, setSettings] = useState<AppSettings>(() => {
+    const isTv = isSmartTv();
+    const isTvStored = typeof window !== 'undefined' && localStorage.getItem('cloudsend_tv_mode') === 'true';
     const detected = detectDeviceType();
-    const saved = localStorage.getItem('cloudsend_settings');
+    const isTvEffective = isTv || isTvStored;
+    const effectiveType: DeviceType = isTvEffective ? 'tv' : detected;
+    const defaultDpi = isTvEffective ? getRecommendedTvDpi() : 1.0;
+
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('cloudsend_settings') : null;
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
+        const tvActive = parsed.tvModeEnabled ?? isTvEffective;
+        const currentType: DeviceType = tvActive ? 'tv' : detected;
         return {
           ...parsed,
-          deviceType: detected, // Always enforce auto-detected device
+          deviceType: currentType,
+          tvModeEnabled: tvActive,
+          tvDpiScale: parsed.tvDpiScale || (tvActive ? getRecommendedTvDpi() : 1.0),
+          autoAccept: tvActive ? (parsed.autoAccept ?? true) : (parsed.autoAccept ?? false),
         };
       } catch {
         // fallback
       }
     }
     return {
-      deviceName: generateDefaultDeviceName(detected),
-      deviceType: detected,
+      deviceName: generateDefaultDeviceName(effectiveType),
+      deviceType: effectiveType,
       avatarColor: getRandomColor(),
-      autoAccept: false,
+      autoAccept: isTvEffective,
       soundEnabled: true,
+      tvModeEnabled: isTvEffective,
+      tvDpiScale: defaultDpi,
+      dpiScaleMode: isTvEffective ? 'tv_150' : 'auto',
     };
   });
 
@@ -120,6 +135,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Keep deviceType synchronized if window dimensions / hardware context changes
   useEffect(() => {
     const handleResize = () => {
+      if (settingsRef.current.tvModeEnabled || isSmartTv()) {
+        return; // Retain TV mode if enabled or on TV
+      }
       const current = detectDeviceType();
       if (current !== settingsRef.current.deviceType) {
         setSettings(prev => ({ ...prev, deviceType: current }));
@@ -135,21 +153,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('cloudsend_settings', JSON.stringify(settings));
   }, [settings]);
 
-  // Handle Presence Heartbeat in Firestore using latest settings
+  // Handle Presence Heartbeat in Firestore using latest settings & real detected hardware
   const updatePresence = async (uid: string, profile?: Partial<UserDevice>) => {
     try {
       const currentSettings = settingsRef.current;
+      const currentHwType = currentSettings.deviceType || (isSmartTv() ? 'tv' : detectDeviceType());
       const currentUsr = currentUserRef.current;
       const presenceRef = doc(db, 'presence', uid);
       await setDoc(presenceRef, {
         uid,
         displayName: profile?.displayName || currentUsr?.displayName || currentUsr?.email?.split('@')[0] || 'Người dùng',
         deviceName: currentSettings.deviceName || profile?.deviceName || 'Thiết bị',
-        deviceType: currentSettings.deviceType || profile?.deviceType || 'laptop',
+        deviceType: currentHwType,
         avatarColor: currentSettings.avatarColor || profile?.avatarColor || '#10B981',
         status: 'online',
         lastSeen: new Date().toISOString(),
       }, { merge: true });
+
+      // Synchronize latest active hardware to users record
+      const userDocRef = doc(db, 'users', uid);
+      setDoc(userDocRef, { deviceType: currentHwType }, { merge: true }).catch(() => {});
     } catch (err) {
       console.warn('Presence update error:', err);
     }
@@ -178,6 +201,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const session: AppUser = JSON.parse(saved);
           if (session && session.uid) {
+            // Check if user is currently banned
+            const banCheck = await checkUserBanStatus(session.email, session.uid);
+            if (banCheck.isBanned) {
+              localStorage.removeItem('cloudsend_custom_session');
+              localStorage.removeItem('cloudsend_user_profile');
+              setCurrentUser(null);
+              currentUserRef.current = null;
+              setUserProfile(null);
+              if (isMounted) setLoading(false);
+              return;
+            }
+
             if (!isMounted) return;
             setCurrentUser(session);
             currentUserRef.current = session;
@@ -191,7 +226,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   setSettings((prev) => ({
                     ...prev,
                     deviceName: profileData.deviceName,
-                    deviceType: profileData.deviceType || prev.deviceType,
+                    deviceType: detectDeviceType(),
                     avatarColor: profileData.avatarColor || prev.avatarColor,
                   }));
                 }
@@ -213,6 +248,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
+        // Enforce Dev Ban Check on Gmail / Firebase Auth
+        const banCheck = await checkUserBanStatus(user.email, user.uid);
+        if (banCheck.isBanned) {
+          console.warn('User is banned by Dev:', banCheck.message);
+          await signOut(auth);
+          localStorage.removeItem('cloudsend_custom_session');
+          localStorage.removeItem('cloudsend_user_profile');
+          setCurrentUser(null);
+          currentUserRef.current = null;
+          setUserProfile(null);
+          if (isMounted) setLoading(false);
+          return;
+        }
+
         const appUser: AppUser = {
           uid: user.uid,
           email: user.email,
@@ -239,7 +288,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setSettings((prev) => ({
                 ...prev,
                 deviceName: profileData.deviceName,
-                deviceType: profileData.deviceType || prev.deviceType,
+                deviceType: detectDeviceType(),
                 avatarColor: profileData.avatarColor || prev.avatarColor,
               }));
             }
@@ -249,7 +298,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               email: user.email || '',
               displayName: user.displayName || user.email?.split('@')[0] || 'Người dùng',
               deviceName: settings.deviceName,
-              deviceType: settings.deviceType,
+              deviceType: detectDeviceType(),
               avatarColor: settings.avatarColor,
               createdAt: new Date().toISOString(),
             };
@@ -291,17 +340,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
+    const handleWindowUnload = () => {
+      if (currentUserRef.current) {
+        removePresence(currentUserRef.current.uid);
+      }
+    };
+    window.addEventListener('beforeunload', handleWindowUnload);
+    window.addEventListener('pagehide', handleWindowUnload);
+
     return () => {
       isMounted = false;
       unsubscribe();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', handleWindowUnload);
+      window.removeEventListener('pagehide', handleWindowUnload);
       if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
     };
   }, []);
 
   const loginWithGoogle = async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
+      const res = await signInWithPopup(auth, googleProvider);
+      if (res.user) {
+        const banCheck = await checkUserBanStatus(res.user.email, res.user.uid);
+        if (banCheck.isBanned) {
+          await signOut(auth);
+          throw new Error(banCheck.message || 'Tài khoản của bạn đã bị DEV cấm tham gia hệ thống.');
+        }
+      }
     } catch (error: any) {
       if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
         console.info('Google Sign-In popup was closed by user.');
@@ -314,6 +380,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginWithEmail = async (email: string, pass: string) => {
     const cleanEmail = email.trim().toLowerCase();
+
+    // Check ban status by email first
+    const banCheck = await checkUserBanStatus(cleanEmail);
+    if (banCheck.isBanned) {
+      throw new Error(banCheck.message || 'Tài khoản Email này đã bị DEV cấm đăng nhập.');
+    }
+
     const emailKey = await getEmailKey(cleanEmail);
     const accountRef = doc(db, 'accounts', emailKey);
     const accountSnap = await getDoc(accountRef);
@@ -325,6 +398,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const account = accountSnap.data() as CustomAuthAccount;
+
+    // Check ban status by UID as well
+    const uidBanCheck = await checkUserBanStatus(cleanEmail, account.uid);
+    if (uidBanCheck.isBanned) {
+      throw new Error(uidBanCheck.message || 'Tài khoản này đã bị DEV cấm.');
+    }
+
     const computedHash = await hashPassword(pass, account.salt);
 
     if (computedHash !== account.passwordHash) {
@@ -356,7 +436,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: account.email,
           displayName: account.displayName,
           deviceName: account.deviceName || settings.deviceName,
-          deviceType: (account.deviceType as DeviceType) || settings.deviceType,
+          deviceType: detectDeviceType(),
           avatarColor: account.avatarColor || settings.avatarColor,
           createdAt: account.createdAt,
         };
@@ -368,7 +448,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: account.email,
         displayName: account.displayName,
         deviceName: account.deviceName || settings.deviceName,
-        deviceType: (account.deviceType as DeviceType) || settings.deviceType,
+        deviceType: detectDeviceType(),
         avatarColor: account.avatarColor || settings.avatarColor,
         createdAt: account.createdAt,
       };
@@ -376,13 +456,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setUserProfile(profileData);
     if (profileData.deviceName) {
-      setSettings((prev) => ({ ...prev, deviceName: profileData.deviceName }));
+      setSettings((prev) => ({ ...prev, deviceName: profileData.deviceName, deviceType: detectDeviceType() }));
     }
     await updatePresence(account.uid, profileData);
   };
 
   const registerWithEmail = async (email: string, pass: string, name: string, customDeviceName?: string) => {
     const cleanEmail = email.trim().toLowerCase();
+
+    // Check if this email is banned by Dev
+    const banCheck = await checkUserBanStatus(cleanEmail);
+    if (banCheck.isBanned) {
+      throw new Error(banCheck.message || 'Email này đã bị DEV cấm đăng ký/đăng nhập vào hệ thống.');
+    }
+
     const cleanName = name.trim();
     const devName = customDeviceName?.trim() || settings.deviceName;
 
@@ -488,12 +575,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateSettings = async (newSettings: Partial<AppSettings>) => {
-    const detectedType = detectDeviceType();
+    if (newSettings.tvModeEnabled !== undefined) {
+      if (newSettings.tvModeEnabled) {
+        localStorage.setItem('cloudsend_tv_mode', 'true');
+      } else {
+        localStorage.removeItem('cloudsend_tv_mode');
+      }
+    }
+    const isTvStored = typeof window !== 'undefined' && localStorage.getItem('cloudsend_tv_mode') === 'true';
+    const isTv = isSmartTv() || isTvStored || newSettings.tvModeEnabled === true;
+    const effectiveType: DeviceType = isTv ? 'tv' : detectDeviceType();
+
     setSettings((prev) => {
       const updated = { 
         ...prev, 
         ...newSettings,
-        deviceType: detectedType // Locked to hardware detected type
+        deviceType: effectiveType
       };
       return updated;
     });
@@ -507,7 +604,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: userProfile?.createdAt || new Date().toISOString(),
         ...(userProfile || {}),
         deviceName: newSettings.deviceName ?? settings.deviceName,
-        deviceType: detectedType,
+        deviceType: effectiveType,
         avatarColor: newSettings.avatarColor ?? settings.avatarColor,
       };
       setUserProfile(updatedProfile);

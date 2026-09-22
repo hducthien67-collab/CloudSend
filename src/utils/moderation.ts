@@ -1,39 +1,206 @@
 // Moderation utility for text and image content
 // Enforces rules:
-// 1. Text: Censors profanity/vulgar words with ***
+// 1. Text: Censors profanity/vulgar words even when obfuscated with dots, spaces, dashes, symbols (e.g. f.u.c.k, d.i.t, v.l)
 // 2. Images: Blocks strong 18+ (sex / explicit pornography / heavy nudity) and extreme gore (severe bloodshed/mutilation)
 //    while allowing normal fictional horror / dark art / halloween style.
 
-// Vietnamese & English vulgar word lists and patterns
-const PROFANITY_PATTERNS = [
-  // Vietnamese profanities & variations
-  /\b(đ[uụ]\s*m[aá]|du\s*ma|đ[uụ]|đ[iị]t|dit\s*me|đ[iị]t\s*m[eẹ]|d[iị]t\s*c[oụ]|d[iị]t\s*b[aà])\b/gi,
-  /\b(đ[iị]t\s*con\s*m[eẹ]|đ[iị]t\s*m[eẹ]\s*m[aà]y|d[iị]t\s*m[eẹ]\s*m[aà]y|ditme|địtme|djtme|djt)\b/gi,
-  /\b(đ[oồ]i\s*b[aạ]i|d[aâ]m\s*d[uụ]c|th[uủ]\s*d[aâ]m|n[uứ]ng\s*l[oồ]n|n[uứ]ng\s*c[aặ]c|n[uứ]ng)\b/gi,
-  /\b(vcl|vclol|vcc|vkl|vlon|đm|dm|dkm|đkm|dcm|đcm|đmm|dmm|cmm|cmn|cmnr|vlol|vl)\b/gi,
-  /\b(l[oồ]n|l[oồ]ng|bu[oồ]i|c[aặ]c|k[aặ]c|c[aặ]t|d[aá]i|b[iì]u|cailon|c[aá]i\s*l[oồ]n)\b/gi,
-  /\b(m[eẹ]\s*m[aà]y|m[aá]\s*m[aà]y|b[oố]\s*m[aà]y|ch[oó]\s*đ[eẻ]|ch[oó]\s*ch[eế]t)\b/gi,
-  /\b(đ[eé]o|d[eé]o|đ[eéo]n|đel|del)\b/gi,
-  /\b(ch[iị]ch|ch[aạ]y\s*l[aà]ng|g[aá]i\s*g[oọ]i|b[aá]n\s*d[aâ]m)\b/gi,
-  // Leetspeak / separated dots/underscores
-  /\b(d[._\-*]m|đ[._\-*]m|v[._\-*]l|d[._\-*]k[._\-*]m|đ[._\-*]k[._\-*]m|v[._\-*]c[._\-*]l)\b/gi,
-  // English profanities
-  /\b(fuck|fucking|fucker|motherfucker|bitch|bitches|asshole|bastard|dick|pussy|whore|slut|cunt)\b/gi,
-  /\b(porn|porno|pornography|hentai|xx+|xxx|nsfw|sex|erotic|sexx)\b/gi
+// Common separator character set used for obfuscation (dots, spaces, dashes, underscores, symbols)
+const S = '[\\s._\\-*~#%^&@=,:/|\\\\()"\'>+<`!$?\\[\\]{}]*';
+
+// Unicode word boundary for Vietnamese and English
+const B_START = '(?<=^|[^a-zA-Z0-9áàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬÉÈẺẼẸÊẾỀỂỄỆÍÌỈĨỊÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÚÙỦŨỤƯỨỪỬỮỰÝỲỶỸỴĐ])';
+const B_END = '(?=$|[^a-zA-Z0-9áàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬÉÈẺẼẸÊẾỀỂỄỆÍÌỈĨỊÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÚÙỦŨỤƯỨỪỬỮỰÝỲỶỸỴĐ])';
+
+// Whitelist of innocent thinking sounds and chat words
+const INNOCENT_SOUNDS_REGEX = /^(?:h+m+|h+a+|h+e+|h+i+|u+h*m*|o+h+|a+l+o+|o+k+a*y*)$/i;
+
+// Whitelist of common innocent phrases that must NEVER be flagged as profanity
+export const INNOCENT_PHRASES_LIST = [
+  'lon nước', 'lon nuoc', 'lon bia', 'lon sữa', 'lon sua',
+  'lon nước ngọt', 'lon nuoc ngot', 'lon coca', 'lon pepsi', 'lon 7up',
+  '1 lon', '2 lon', '3 lon', '4 lon', '5 lon', '6 lon', '7 lon', '8 lon', '9 lon', '10 lon',
+  'một lon', 'mot lon', 'hai lon', 'ba lon',
+  'mấy lon', 'may lon', 'uống lon', 'uong lon', 'mua lon', 'bán lon', 'ban lon',
+  'vỏ lon', 'vo lon', 'thu gom lon', 'lon thiếc', 'lon thiec', 'lon nhôm', 'lon nhom',
+  'thùng lon', 'thung lon', 'keng lon',
+  'các bạn', 'cac ban', 'các anh', 'cac anh', 'các chị', 'cac chi', 'các em', 'cac em',
+  'các file', 'cac file', 'các tài liệu', 'cac tai lieu', 'các bác', 'cac bac',
+  'các nhóm', 'cac nhom', 'các người', 'cac nguoi', 'các bên', 'cac ben',
+  'các cháu', 'cac chau', 'các con', 'các bạn trẻ',
+  'buổi sáng', 'buoi sang', 'buổi chiều', 'buoi chieu', 'buổi tối', 'buoi toi',
+  'buổi trưa', 'buoi trua', 'buổi học', 'buoi hoc', 'buổi họp', 'buoi hop',
+  'buổi lễ', 'buoi le', 'buổi tiệc', 'buoi tiec', 'trái bưởi', 'trai buoi', 'bưởi da xanh',
+  'ví dụ', 'vi du', 'mặc dù', 'mac du', 'dù sao', 'du sao', 'dù cho', 'du cho',
+  'du lịch', 'du lich', 'du khách', 'du khach', 'du học', 'du hoc', 'chu du',
+  'vui lòng', 'vui long', 'hài lòng', 'hai long', 'tấm lòng', 'tam long',
+  'hạ long', 'ha long', 'thăng long', 'thang long', 'long lanh', 'cầu lông', 'cau long',
+  'edit', 'credit', 'audit', 'reddit', 'condition', 'edition', 'traditional', 'predict',
+  'asset', 'assign', 'assist', 'class', 'pass', 'glass', 'grass', 'bass',
+  'cm', 'mm', 'dm', 'km', 'kg', 'ml', 'admin', 'welcome', 'đi tới', 'di toi', 'đi tiếp', 'di tiep'
+];
+
+// Anti-obfuscation profanity regular expressions (catches real vulgar words, bypasses, leetspeak, dots, dashes)
+// Covers both with diacritics and without diacritics (cai lon, cailon, cac, buoi, dit, du, etc.)
+const ANTI_OBFUSCATION_PATTERNS: { name: string; regex: RegExp }[] = [
+  // English: FUCK (fuck, f.u.c.k, f u c k, f_u_c_k, f*u*c*k, fuk, f.u.k, phuck, f.u.c.k.i.n.g, motherfucker)
+  {
+    name: 'fuck/f.u.c.k',
+    regex: new RegExp(`${B_START}(?:m[o0]ther${S})?(?:f+|ph)${S}[uưúùụủũûü0v@]+h?${S}[ck]+h?(?:${S}[ck]+)?(?:${S}(?:ing|er|ed|in|s))?${B_END}`, 'gi')
+  },
+  // Vietnamese: ĐỊT / DIT (địt, dit, d.i.t, đ.ị.t, d i t, d_i_t, djt, dyt, ditme, d.i.t.m.e, dit con me, dit cu)
+  // Strictly bounded to avoid matching "edit", "credit", "audit", "đi tới", "đi tiếp"
+  {
+    name: 'dit/d.i.t',
+    regex: new RegExp(`${B_START}(?:[đd]${S}[ịiíìĩỉjyy1!]+${S}[tct7]+(?:${S}(?:m[eẹ]|c[oụ]|b[aà]|con${S}m[eẹ]|m[aà]y|c[uụ]|nh[aà]))?|[đd]\\.[iị]\\.[tct]|djt|dyt|ditme|d\\.i\\.t\\.m\\.e)${B_END}`, 'gi')
+  },
+  // Vietnamese: ĐỤ / DU (đụ, đ.ụ, đ ụ, đụ má, đụ mẹ, du ma, duma, dume, đ.ụ.m.á)
+  // Protected against innocent words like "du lịch", "dù sao", "ví dụ", "mặc dù" via exact span checking
+  {
+    name: 'du/đ.ụ',
+    regex: new RegExp(`${B_START}(?:đ${S}ụ|[đd]${S}[uụúùủũ]+${S}(?:m[aáàạảã]+|m[eẹ]|m[oóò]a|b[aà]|c[oụ])|[đd]\\.[uụ]\\.m\\.[aá]|[đd]\\.[uụ])${B_END}`, 'gi')
+  },
+  // Vietnamese: ĐM / DKM / DCM / CMM / DMM (đm, dm, đ.m, d.m, dkm, đkm, d.k.m, dcm, đcm, đmm, dmm)
+  {
+    name: 'dm/d.m/dkm',
+    regex: new RegExp(`${B_START}(?:[đd]${S}[kKcChH]${S}[mM]|[đd]${S}[mM]{1,3}|[đd]\\.[mM]|d\\.[kK]\\.[mM]|[cC]${S}[mM]{2,3}|[cC]${S}[mM]${S}[nN](?:${S}[rR])?)${B_END}`, 'gi')
+  },
+  // Vietnamese: VL / VCL / VKL / VCC / VLON (vl, v.l, vcl, v.c.l, vkl, v.k.l, vcc, vlon)
+  {
+    name: 'vl/v.l/vcl',
+    regex: new RegExp(`${B_START}(?:v${S}[ck]${S}[lL]|v${S}[ck]${S}[ck]|v${S}l(?:${S}[oồô0]${S}n)|v\\.[ck]\\.[lL]|v\\.[lL])${B_END}`, 'gi')
+  },
+  // Vietnamese: LỒN / LON / CAI LON (lồn, l.o.n, l.ồ.n, l o n, cailon, cái lồn, cái lon, cai lon, con lon, con lồn, ăn lồn, bú lồn, hãm lồn, nứng lồn)
+  // Catches all profanity while protecting legitimate beverage cans (lon nước, lon bia, 1 lon, etc.) via exact innocent span checking!
+  {
+    name: 'lon/l.o.n',
+    regex: new RegExp(`${B_START}(?:(?:c[aáàạảã]i${S}|con${S})l${S}[oồốổỗộ0]+${S}n|(?:[aăắằẳẵặáàảãạ]n|b[uúùủũụ]|h[aáàạảã]m|m[aăặắằẳẵạáà]t|x[aáàạảã]m|r[aáàạảã]ch|n[uứừửữựúùủũụ]ng|đ[uụúùủũ]|du)${S}l${S}[oồốổỗộ0]+${S}n|l${S}[oồốổỗộ0]+${S}n${S}(?:m[eẹ]|m[aà]y|t[oọóò]|qu[eéèẹẻẽ]|bu[ồo]i|[ck][aặ]c)|l\\.o\\.n|l\\.ồ\\.n|l[ồốổỗộ0]+n|lon)${B_END}`, 'gi')
+  },
+  // Vietnamese: CẶC / CAC / KẶC (cặc, kặc, c.ặ.c, c.a.c, cái cặc, cái cac, con cặc, con cac, ăn cặc, bú cặc, như cặc, đầu cặc)
+  // Protected against innocent words like "các bạn", "các anh", "các file" via exact innocent span checking
+  {
+    name: 'cac/c.a.c',
+    regex: new RegExp(`${B_START}(?:(?:c[aáàạảã]i${S}|con${S})[ck]${S}[aăặậ4@]+${S}[ckct]+|(?:[aăắằẳẵặáàảãạ]n|b[uúùủũụ]|nh[uưúùủũụ]|đ[aâầấẩẫậ]u)${S}[ck]${S}[aăặậ4@]+${S}[ckct]+|[ck]${S}[aăặ]+${S}[ck]+${S}(?:bu[ồo]i|l[oồ]n|m[eẹ]|m[aà]y)|c\\.ặ\\.c|c\\.a\\.c|[ck][ặậ]c)${B_END}`, 'gi')
+  },
+  // Vietnamese: BUỒI / BUOI (buồi, buoi, b.u.ồ.i, b.u.o.i, con buồi, con buoi, cái buồi, cái buoi, đầu buồi, dau buoi, như buồi, nhu buoi, ăn buồi)
+  // Protected against innocent words like "buổi sáng", "buổi trưa", "trái bưởi" via exact innocent span checking
+  {
+    name: 'buoi/b.u.o.i',
+    regex: new RegExp(`${B_START}(?:(?:c[aáàạảã]i${S}|con${S}|đ[aâầấẩẫậ]u|nh[uưúùủũụ]|[aăắằẳẵặáàảãạ]n)${S}b${S}[uưúùủũ]+${S}[oồốộ0]+${S}[iịíìĩỉy]+|b${S}[uưúùủũ]+${S}[ồốộ]+${S}[iịíìĩỉy]+|b\\.u\\.ồ\\.i|b\\.u\\.o\\.i|bu[ồo]i${S}[ck][aặ]c)${B_END}`, 'gi')
+  },
+  // Vietnamese: CU / BÚ CU / CON CU (bú cu, bu cu, con cu, cái cu, liếm cu, bóp cu, sóc cu)
+  {
+    name: 'cu/bucu',
+    regex: new RegExp(`${B_START}(?:(?:b[uúùủũụ]|li[eêéèẹẻẽ]m|b[oóòỏõọ]p|s[oóòỏõọ]c)${S}(?:con${S}|c[aáàạảã]i${S})?c${S}[uưúùủũ]+|(?:con|c[aáàạảã]i)${S}c${S}[uưúùủũ]+|c\\.u)${B_END}`, 'gi')
+  },
+  // Vietnamese: ĐÉO / DEO (đéo, đ.é.o, đ e o, del, đel, đ.e.o)
+  {
+    name: 'deo/đ.é.o',
+    regex: new RegExp(`${B_START}(?:[đd]${S}[éẹ3]+${S}[oóòỏõọ0]+|[đd]${S}[eéèẻẽẹ3]+${S}l+|đ\\.[ée]\\.[oó]|d\\.e\\.o)${B_END}`, 'gi')
+  },
+  // Vietnamese: CHỊCH (chịch, c.h.i.c.h, chich)
+  {
+    name: 'chich/c.h.i.c.h',
+    regex: new RegExp(`${B_START}(?:ch${S}[iịíìĩỉj]+${S}ch|c\\.h\\.i\\.c\\.h)${B_END}`, 'gi')
+  },
+  // English: SEX / SEXX (sex, s.e.x, s e x, s_e_x, s*e*x, s3x)
+  {
+    name: 'sex/s.e.x',
+    regex: new RegExp(`${B_START}[s$]${S}[eéèẻẽẹ3]+${S}x+${B_END}`, 'gi')
+  },
+  // English: PORN / PORNO (porn, p.o.r.n, p o r n, p0rn, p_o_r_n, porno)
+  {
+    name: 'porn/p.o.r.n',
+    regex: new RegExp(`${B_START}p${S}[oóòỏõọôồố0]+${S}r+${S}n+(?:${S}[o0])?${B_END}`, 'gi')
+  },
+  // English: BITCH (bitch, b.i.t.c.h, b i t c h, b!tch, bitches)
+  {
+    name: 'bitch/b.i.t.c.h',
+    regex: new RegExp(`${B_START}b${S}[iịíìĩỉ1!]+${S}t+${S}c+${S}h+(?:${S}es)?${B_END}`, 'gi')
+  },
+  // English: ASSHOLE / ASS (asshole, a.s.s.h.o.l.e, a$$hole)
+  // Strictly bounded so it never matches "pass", "class", "glass", "asset", "assign"
+  {
+    name: 'asshole/a.s.s',
+    regex: new RegExp(`${B_START}(?:a${S}[s$]{2}${S}h${S}[o0]${S}l${S}e|a\\.[s$]\\.[s$]|dumbass|jackass)${B_END}`, 'gi')
+  },
+  // English: DICK / PUSSY / HENTAI
+  {
+    name: 'dick/d.i.c.k',
+    regex: new RegExp(`${B_START}d${S}[i1!]+${S}[ck]+h?(?:${S}[kc])?${B_END}`, 'gi')
+  },
+  {
+    name: 'pussy/p.u.s.s.y',
+    regex: new RegExp(`${B_START}p${S}[u0v]+${S}[s$]{2,4}${S}y${B_END}`, 'gi')
+  },
+  {
+    name: 'hentai/h.e.n.t.a.i',
+    regex: new RegExp(`${B_START}h${S}[e3]+${S}n+${S}t+${S}[a4@]+${S}[i1!y]+${B_END}`, 'gi')
+  },
+  // English: WHORE / SLUT / CUNT / BASTARD
+  {
+    name: 'whore/slut/cunt',
+    regex: new RegExp(`${B_START}(?:wh${S}[o0]+${S}r+${S}[e3]+|sl${S}[u0v]+${S}t+|c${S}[u0v]+${S}n+${S}t+|b${S}[a4@]+${S}s+${S}t+${S}[a4@]+${S}r+${S}d+)${B_END}`, 'gi')
+  },
+  // Vietnamese sexually explicit & vulgar phrases
+  {
+    name: 'damduc/thudam/nung',
+    regex: new RegExp(`${B_START}(?:d[aâ]m${S}d[uụ]c|th[uủ]${S}d[aâ]m|s[oóòỏõọ]c${S}l[oọóò]|n[uứ]ng${S}(?:l[oồ]n|c[aặ]c)|ch[oó]${S}[đd][eẻ]|ch[oó]${S}ch[eế]t|m[eẹ]${S}m[aà]y|b[aá]n${S}d[aâ]m|g[aá]i${S}g[oọ]i)${B_END}`, 'gi')
+  }
 ];
 
 /**
- * Filter text and replace any vulgar words with asterisks (***)
+ * Filter text and replace any vulgar words with asterisks (***),
+ * completely defeating bypass attempts like f.u.c.k, d.i.t, v.l, s.e.x, cai lon,
+ * while safely protecting verified innocent phrases like "lon nước", "lon bia", "ví dụ", "vui lòng", "các bạn", "buổi sáng".
  */
-export function censorProfanity(text: string): { cleanText: string; hasProfanity: boolean; matchCount: number } {
-  if (!text) return { cleanText: '', hasProfanity: false, matchCount: 0 };
+export function censorProfanity(text: string): { cleanText: string; hasProfanity: boolean; matchCount: number; detectedList: string[] } {
+  if (!text) return { cleanText: '', hasProfanity: false, matchCount: 0, detectedList: [] };
+
+  const lowerText = text.toLowerCase();
+
+  // Pre-calculate exact start and end boundaries of all known innocent phrases
+  const innocentSpans: { start: number; end: number }[] = [];
+  for (const phrase of INNOCENT_PHRASES_LIST) {
+    let searchPos = 0;
+    while (searchPos < lowerText.length) {
+      const idx = lowerText.indexOf(phrase, searchPos);
+      if (idx === -1) break;
+      innocentSpans.push({ start: idx, end: idx + phrase.length });
+      searchPos = idx + phrase.length;
+    }
+  }
+
+  // Check if a matched range [matchStart, matchEnd] is fully enclosed inside a verified innocent phrase
+  const isInsideInnocent = (matchStart: number, matchEnd: number): boolean => {
+    return innocentSpans.some(span => matchStart >= span.start && matchEnd <= span.end);
+  };
 
   let clean = text;
   let matchCount = 0;
+  const detectedList: string[] = [];
 
-  for (const pattern of PROFANITY_PATTERNS) {
-    clean = clean.replace(pattern, (match) => {
+  for (const item of ANTI_OBFUSCATION_PATTERNS) {
+    const rx = new RegExp(item.regex.source, item.regex.flags);
+    clean = clean.replace(rx, (match, offset) => {
+      const trimmed = match.trim();
+      // Guard against false positives on tiny 1-letter accidental matches
+      if (trimmed.length < 2) return match;
+
+      // Whitelist check: innocent sounds like "Hmmmm", "hmm", "haha", "uhm", etc.
+      if (INNOCENT_SOUNDS_REGEX.test(trimmed)) {
+        return match;
+      }
+
+      // Check if this match is strictly part of an innocent phrase
+      // (e.g. "lon" in "lon nước" is protected, but "cai lon" or "đụ má" in "ví dụ cai lon" is NOT, and is CENSORED!)
+      const matchStart = offset;
+      const matchEnd = offset + match.length;
+      if (isInsideInnocent(matchStart, matchEnd)) {
+        return match;
+      }
+
       matchCount++;
+      detectedList.push(match);
       return '*'.repeat(Math.max(3, match.length));
     });
   }
@@ -41,7 +208,120 @@ export function censorProfanity(text: string): { cleanText: string; hasProfanity
   return {
     cleanText: clean,
     hasProfanity: matchCount > 0,
-    matchCount
+    matchCount,
+    detectedList
+  };
+}
+
+/**
+ * Extract external links or URLs from text and identify suspicious links
+ */
+export function extractAndCheckLinks(text: string): { links: string[]; suspiciousLinks: string[] } {
+  if (!text) return { links: [], suspiciousLinks: [] };
+
+  const urlRegex = /(?:https?:\/\/|www\.)[^\s<>"'{}|\\^`[\]]+/gi;
+  const matches = text.match(urlRegex) || [];
+  const links = Array.from(new Set(matches));
+
+  const suspiciousIndicators = [
+    'bit.ly', 'tinyurl', 't.co', 'cutt.ly', 'is.gd', 'free-', 'hack',
+    'gift', 'steam-gift', 'robux', 'login-', 'verify-', 'banking', '000webhost',
+    '.xyz', '.top', '.ru', '.pw'
+  ];
+
+  const suspiciousLinks = links.filter(link => {
+    const lower = link.toLowerCase();
+    return suspiciousIndicators.some(ind => lower.includes(ind)) || /^(https?:\/\/)?\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/.test(lower);
+  });
+
+  return { links, suspiciousLinks };
+}
+
+/**
+ * Comprehensive Automated Audit result for DEV CLOUD Assistant
+ */
+export interface ContentAuditReport {
+  riskLevel: 'clean' | 'warning' | 'danger';
+  riskScore: number; // 0 (safe) - 100 (critical violation)
+  summary: string;
+  violationsFound: {
+    type: 'profanity_bypass' | 'suspicious_link' | 'toxic_phrase';
+    detectedWord: string;
+    description: string;
+  }[];
+  suggestedAction: string;
+}
+
+/**
+ * Perform a deep audit on a user's combined messages and contents
+ */
+export function runDevContentAudit(messages: { text: string; rawText?: string; id?: string; createdAt?: string }[]): ContentAuditReport {
+  let riskScore = 0;
+  const violationsFound: ContentAuditReport['violationsFound'] = [];
+  const bypassKeywords = new Set<string>();
+  const suspiciousUrls = new Set<string>();
+
+  for (const msg of messages) {
+    const textToCheck = msg.rawText || msg.text;
+    if (!textToCheck) continue;
+
+    // Check profanities & bypass attempts
+    const { detectedList } = censorProfanity(textToCheck);
+    if (detectedList.length > 0) {
+      for (const word of detectedList) {
+        if (!bypassKeywords.has(word)) {
+          bypassKeywords.add(word);
+          const isObfuscated = /[._\-*~#\s]/.test(word) && word.length > 3;
+          violationsFound.push({
+            type: 'profanity_bypass',
+            detectedWord: word,
+            description: isObfuscated
+              ? `Cố tình lách luật (chèn dấu phân cách: "${word}")`
+              : `Từ ngữ thô tục vi phạm tiêu chuẩn ("${word}")`
+          });
+          riskScore += isObfuscated ? 35 : 25;
+        }
+      }
+    }
+
+    // Check links
+    const { suspiciousLinks } = extractAndCheckLinks(msg.text);
+    for (const sLink of suspiciousLinks) {
+      if (!suspiciousUrls.has(sLink)) {
+        suspiciousUrls.add(sLink);
+        violationsFound.push({
+          type: 'suspicious_link',
+          detectedWord: sLink,
+          description: `Liên kết ngoài đáng ngờ hoặc rút gọn độc hại: ${sLink}`
+        });
+        riskScore += 40;
+      }
+    }
+  }
+
+  // Cap riskScore
+  riskScore = Math.min(100, riskScore);
+
+  let riskLevel: ContentAuditReport['riskLevel'] = 'clean';
+  let summary = 'Nội dung tin nhắn người dùng lành mạnh, không phát hiện từ lách luật hay link độc hại.';
+  let suggestedAction = 'Không cần xử lý kỷ luật. Người dùng tuân thủ nội quy.';
+
+  if (riskScore >= 60 || violationsFound.length >= 3) {
+    riskLevel = 'danger';
+    summary = `🔴 Phát hiện ${violationsFound.length} vi phạm nghiêm trọng (từ tục tĩu lách luật / link độc hại). Cần xem xét áp dụng hình thức kỷ luật ngay.`;
+    suggestedAction = 'Khuyến nghị: Áp dụng Kỷ luật (Cảnh cáo nếu lần 1, Banned 3 ngày nếu lần 2, Banned 6 tháng nếu lần 3).';
+  } else if (riskScore > 0 || violationsFound.length > 0) {
+    riskLevel = 'warning';
+    summary = `🟡 Phát hiện ${violationsFound.length} dấu hiệu vi phạm nhẹ hoặc từ ngữ nhạy cảm. Cần theo dõi thêm.`;
+    suggestedAction = 'Khuyến nghị: Gửi Cảnh cáo hoặc xóa các tin nhắn vi phạm.';
+  }
+
+  return {
+    riskLevel,
+    riskScore,
+    summary,
+    violationsFound,
+    suggestedAction
   };
 }
 
@@ -213,7 +493,7 @@ export async function moderateUploadedImage(dataUrl: string, fileName = ''): Pro
   // 2. Try calling server-side moderation if endpoint exists
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3500);
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
 
     const res = await fetch('/api/moderate-image', {
       method: 'POST',

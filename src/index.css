@@ -65,3 +65,42 @@ main, div {
   content-visibility: auto;
   contain-intrinsic-size: 0 80px;
 }
+
+/* ==========================================================
+   SMART TV & 10-FOOT LEANBACK UI ADAPTATIONS (DPI FIX)
+   ========================================================== */
+html.tv-mode {
+  --tv-font-scale: 1.25;
+  user-select: none;
+}
+
+html.tv-mode body {
+  /* TV Safe Zone (overscan margin to prevent edge clipping on physical TV bezels) */
+  padding-left: clamp(16px, 2.5vw, 36px);
+  padding-right: clamp(16px, 2.5vw, 36px);
+  box-sizing: border-box;
+}
+
+/* TV Remote Control D-pad Focus Ring (Ultra-visible from 3-4 meters away) */
+html.tv-mode :focus-visible,
+html.tv-mode .tv-focus-target:focus,
+html.tv-mode [tabindex]:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 4px #10b981, 0 0 25px rgba(16, 185, 129, 0.7) !important;
+  transform: scale(1.02);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  z-index: 40;
+}
+
+/* TV buttons minimum touch/pointer target */
+html.tv-mode button,
+html.tv-mode [role="button"],
+html.tv-mode a {
+  min-height: 48px;
+}
+
+/* TV smooth transitions for remote navigation */
+html.tv-mode * {
+  scroll-behavior: smooth;
+}
+

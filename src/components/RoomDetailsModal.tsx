@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db } from '../firebase/config';
 import { doc, updateDoc, deleteDoc, collection, addDoc } from 'firebase/firestore';
 import { ChatRoom, ChatMessage, RoomMember } from '../types';
@@ -54,6 +54,17 @@ export const RoomDetailsModal: React.FC<RoomDetailsModalProps> = ({
   const [customAvatar, setCustomAvatar] = useState(room.avatar || '');
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Sync state whenever room or isOpen changes
+  useEffect(() => {
+    if (isOpen) {
+      setRoomName(room.name || '');
+      setRoomDesc(room.description || '');
+      setSelectedColor(room.avatarColor || '#10b981');
+      setCustomAvatar(room.avatar || '');
+      setSaveSuccess(false);
+    }
+  }, [isOpen, room.id, room.name, room.description, room.avatarColor, room.avatar]);
 
   // Dissolve / Leave state
   const [showDissolveModal, setShowDissolveModal] = useState(false);
@@ -316,6 +327,8 @@ export const RoomDetailsModal: React.FC<RoomDetailsModalProps> = ({
                     >
                       {customAvatar ? (
                         <img src={customAvatar} alt="Room" className="w-full h-full object-cover" />
+                      ) : room.id === 'public-relay-lounge' ? (
+                        <Globe className="w-8 h-8 text-emerald-200" />
                       ) : (
                         roomName.charAt(0).toUpperCase() || 'R'
                       )}

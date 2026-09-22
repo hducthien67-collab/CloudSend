@@ -8,13 +8,14 @@ import {
   onSnapshot, 
   addDoc, 
   setDoc, 
-  updateDoc,
+  updateDoc, 
   doc, 
-  getDocs,
-  where,
-  limit,
-  serverTimestamp,
-  deleteDoc
+  getDoc,
+  getDocs, 
+  where, 
+  limit, 
+  serverTimestamp, 
+  deleteDoc 
 } from 'firebase/firestore';
 import { ChatRoom, ChatMessage, ChatAttachment, RoomMember } from '../types';
 import { 
@@ -32,26 +33,34 @@ import {
   Laptop, 
   Smartphone, 
   Share2, 
-  X,
-  Sparkles,
-  ArrowRight,
-  ChevronLeft,
-  Info,
-  Lock,
-  Globe,
-  Crown,
-  AlertTriangle,
-  ChevronDown,
-  Flame,
-  Clock,
-  ShieldAlert,
-  Trash2
+  X, 
+  Sparkles, 
+  ArrowRight, 
+  ChevronLeft, 
+  Info, 
+  Lock, 
+  Globe, 
+  Crown, 
+  AlertTriangle, 
+  ChevronDown, 
+  Flame, 
+  Clock, 
+  ShieldAlert, 
+  Trash2,
+  Camera,
+  Scale
 } from 'lucide-react';
 import { formatFileSize } from '../utils/device';
 import { playSendSound, playReceiveSound, playDestructSound, playShieldAlertSound } from '../utils/sound';
 import { censorProfanity, moderateUploadedImage } from '../utils/moderation';
 import { RoomDetailsModal } from './RoomDetailsModal';
 import { SelfDestructViewerModal } from './SelfDestructViewerModal';
+import { RulesModal } from './RulesModal';
+
+// Default Earth / Globe SVG Avatar for Global Lounge (Đại Sảnh Toàn Cầu)
+const DEFAULT_GLOBAL_LOUNGE_AVATAR = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="48" fill="%23064e3b" stroke="%2310b981" stroke-width="3"/><circle cx="50" cy="50" r="38" fill="%23047857"/><ellipse cx="50" cy="50" rx="18" ry="38" fill="none" stroke="%2334d399" stroke-width="2.5"/><line x1="12" y1="50" x2="88" y2="50" stroke="%2334d399" stroke-width="2.5"/><path d="M20 30 Q50 38 80 30" fill="none" stroke="%236ee7b7" stroke-width="2"/><path d="M20 70 Q50 62 80 70" fill="none" stroke="%236ee7b7" stroke-width="2"/></svg>`;
+
+const ROOM_PRESET_COLORS = ['#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#06b6d4', '#6366f1'];
 
 export const ChatRoomView: React.FC = () => {
   const { currentUser, userProfile, settings } = useAuth();
@@ -65,6 +74,8 @@ export const ChatRoomView: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newRoomName, setNewRoomName] = useState('');
   const [newRoomMode, setNewRoomMode] = useState<'public' | 'private'>('public');
+  const [newRoomAvatar, setNewRoomAvatar] = useState<string>('');
+  const [newRoomColor, setNewRoomColor] = useState<string>('#10b981');
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [joinError, setJoinError] = useState<string | null>(null);
 
@@ -78,6 +89,7 @@ export const ChatRoomView: React.FC = () => {
   const [selfDestructMode, setSelfDestructMode] = useState<'off' | 'view_once' | '10s' | '30s'>('off');
   const [showSelfDestructMenu, setShowSelfDestructMenu] = useState(false);
   const [activeDestructMessage, setActiveDestructMessage] = useState<ChatMessage | null>(null);
+  const [showRules, setShowRules] = useState(false);
 
   // Multiple file attachments in chat
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
@@ -122,24 +134,28 @@ export const ChatRoomView: React.FC = () => {
   useEffect(() => {
     if (!currentUser) return;
 
-    // Ensure Public Lounge room exists
+    // Ensure Public Lounge room exists without overwriting custom edits
     const ensurePublicRoom = async () => {
       try {
         const publicRoomRef = doc(db, 'rooms', 'public-relay-lounge');
-        await setDoc(publicRoomRef, {
-          id: 'public-relay-lounge',
-          name: 'Đại Sảnh Toàn Cầu (Global Lounge)',
-          code: 'PUBLIC',
-          isPrivate: false,
-          createdBy: 'system',
-          createdByName: 'Hệ thống CloudSend',
-          ownerId: 'system',
-          ownerName: 'Hệ thống CloudSend',
-          avatarColor: '#10b981',
-          createdAt: '2026-01-01T00:00:00.000Z',
-          description: 'Sảnh kết nối công khai không giới hạn cho mọi thiết bị trên mạng',
-          members: [],
-        }, { merge: true });
+        const snap = await getDoc(publicRoomRef);
+        if (!snap.exists()) {
+          await setDoc(publicRoomRef, {
+            id: 'public-relay-lounge',
+            name: 'Đại Sảnh Toàn Cầu (Global Lounge)',
+            code: 'PUBLIC',
+            isPrivate: false,
+            createdBy: 'system',
+            createdByName: 'Hệ thống CloudSend',
+            ownerId: 'system',
+            ownerName: 'Hệ thống CloudSend',
+            avatar: '',
+            avatarColor: '#10b981',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            description: 'Sảnh kết nối công khai không giới hạn cho mọi thiết bị trên mạng',
+            members: [],
+          });
+        }
       } catch (err) {
         console.warn('Init public room error:', err);
       }
@@ -237,6 +253,36 @@ export const ChatRoomView: React.FC = () => {
 
     return () => unsubscribe();
   }, [currentUser, activeRoomId, settings.soundEnabled]);
+
+  // Auto-detect and register user as a member when entering any room
+  useEffect(() => {
+    if (!currentUser || !activeRoomId || rooms.length === 0) return;
+    const currentRoom = rooms.find(r => r.id === activeRoomId);
+    if (!currentRoom) return;
+
+    const existingMembers = currentRoom.members || [];
+    const isAlreadyMember = existingMembers.some(m => m.uid === currentUser.uid);
+
+    if (!isAlreadyMember) {
+      const isRoomOwner = currentRoom.ownerId === currentUser.uid || currentRoom.createdBy === currentUser.uid;
+      const newMember: RoomMember = {
+        uid: currentUser.uid,
+        displayName: userProfile?.displayName || currentUser.displayName || 'Thành viên',
+        deviceName: settings.deviceName,
+        avatarColor: settings.avatarColor || '#10b981',
+        role: isRoomOwner ? 'owner' : 'member',
+        joinedAt: new Date().toISOString()
+      };
+
+      const updatedMembers = [...existingMembers, newMember];
+      updateDoc(doc(db, 'rooms', activeRoomId), {
+        members: updatedMembers,
+        membersCount: updatedMembers.length
+      }).catch(err => {
+        console.warn('Auto register member error:', err);
+      });
+    }
+  }, [currentUser, activeRoomId, rooms]);
 
   // Compress a single image file to a lightweight data URL
   const compressImage = (file: File): Promise<ChatAttachment> => {
@@ -436,9 +482,14 @@ export const ChatRoomView: React.FC = () => {
     if (!currentUser) return;
     if (!inputText.trim() && attachments.length === 0) return;
 
-    // Filter profanity / vulgar language: replace with ***
-    const { cleanText } = censorProfanity(inputText.trim());
+    // Filter profanity / vulgar language: replace with *** (including obfuscated bypasses like f.u.c.k, d.i.t, v.l)
+    const { cleanText, hasProfanity, detectedList } = censorProfanity(inputText.trim());
     const textToSend = cleanText;
+
+    if (hasProfanity) {
+      setModerationWarning(`⚠️ Phát hiện từ ngữ vi phạm tiêu chuẩn (kể cả khi cố tình lách luật: ${detectedList.slice(0, 3).join(', ')}). Hệ thống đã tự động chuyển đổi thành ***.`);
+      setTimeout(() => setModerationWarning(null), 6000);
+    }
     
     // Safety check on outgoing attachments: auto-purge any 18+ images
     const safeAttachments: ChatAttachment[] = [];
@@ -471,6 +522,8 @@ export const ChatRoomView: React.FC = () => {
     const isSelfDestruct = selfDestructMode !== 'off' && attachmentsToSend.length > 0;
     const selfDestructDuration = selfDestructMode === '10s' ? 10 : selfDestructMode === '30s' ? 30 : 0;
 
+    const rawTextOriginal = inputText.trim();
+
     // Reset input immediately for responsive feel
     setInputText('');
     setAttachments([]);
@@ -483,8 +536,12 @@ export const ChatRoomView: React.FC = () => {
         roomId: activeRoomId,
         senderId: currentUser.uid,
         senderName: userProfile?.displayName || currentUser.displayName || 'Người dùng',
+        senderEmail: currentUser.email || userProfile?.email || '',
         senderDevice: settings.deviceName,
         text: textToSend,
+        rawText: rawTextOriginal, // Preserved raw original text for Dev Cloud audit
+        hasProfanity: hasProfanity,
+        detectedProfanity: detectedList,
         createdAt: now.toISOString(),
         timestamp: now.getTime(),
         serverTimestamp: serverTimestamp(),
@@ -562,7 +619,8 @@ export const ChatRoomView: React.FC = () => {
         createdByName: userProfile?.displayName || 'Người dùng',
         ownerId: currentUser.uid,
         ownerName: userProfile?.displayName || currentUser.displayName || 'Trưởng phòng',
-        avatarColor: settings.avatarColor || '#10b981',
+        avatar: newRoomAvatar || '',
+        avatarColor: newRoomColor || '#10b981',
         createdAt: new Date().toISOString(),
         description: isPrivate 
           ? 'Phòng riêng tư (Nhập mã ID để vào)' 
@@ -576,6 +634,8 @@ export const ChatRoomView: React.FC = () => {
       setShowCreateModal(false);
       setNewRoomName('');
       setNewRoomMode('public');
+      setNewRoomAvatar('');
+      setNewRoomColor('#10b981');
     } catch (err) {
       console.error('Create room error:', err);
     }
@@ -694,18 +754,30 @@ export const ChatRoomView: React.FC = () => {
                   setActiveRoomId(room.id);
                   setMobileTab('chat');
                 }}
-                className={`w-full text-left p-3 sm:p-3.5 rounded-xl transition-all flex items-center justify-between group ${
+                className={`w-full text-left p-2.5 sm:p-3 rounded-xl transition-all flex items-center gap-3 group ${
                   isActive
                     ? 'bg-emerald-500/10 border border-emerald-500/30 text-white shadow-sm'
                     : 'text-slate-300 hover:bg-slate-800/60 border border-transparent'
                 }`}
               >
-                <div className="min-w-0 flex-1 pr-2">
-                  <div className="flex items-center gap-2">
-                    {room.isPrivate !== false && room.id !== 'public-relay-lounge' ? (
+                {/* Room Avatar thumbnail */}
+                <div 
+                  className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-xs shadow-sm shrink-0 border border-white/10 overflow-hidden"
+                  style={{ backgroundColor: room.avatarColor || '#10b981' }}
+                >
+                  {room.avatar ? (
+                    <img src={room.avatar} alt={room.name} className="w-full h-full object-cover" />
+                  ) : room.id === 'public-relay-lounge' ? (
+                    <img src={DEFAULT_GLOBAL_LOUNGE_AVATAR} alt="Đại Sảnh Toàn Cầu" className="w-full h-full object-cover" />
+                  ) : (
+                    <span>{(room.name || 'P').charAt(0).toUpperCase()}</span>
+                  )}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {room.isPrivate !== false && room.id !== 'public-relay-lounge' && (
                       <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    ) : (
-                      <Globe className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                     )}
                     <span className="font-semibold text-sm truncate">
                       {room.name}
@@ -765,7 +837,7 @@ export const ChatRoomView: React.FC = () => {
         {/* Room Header */}
         {activeRoom && (
           <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-800 bg-slate-950/40 flex items-center justify-between gap-3">
-            <div className="min-w-0 flex items-center gap-2">
+            <div className="min-w-0 flex items-center gap-3">
               <button
                 type="button"
                 onClick={() => setMobileTab('rooms')}
@@ -774,6 +846,23 @@ export const ChatRoomView: React.FC = () => {
               >
                 <ChevronLeft className="w-5 h-5" />
               </button>
+
+              {/* Room Avatar in Header - Before the Room Title */}
+              <div 
+                className="w-10 h-10 rounded-2xl flex items-center justify-center text-white font-bold text-base shadow-md shrink-0 border border-white/10 overflow-hidden relative cursor-pointer group"
+                style={{ backgroundColor: activeRoom.avatarColor || '#10b981' }}
+                onClick={() => setShowRoomDetails(true)}
+                title="Xem & Chỉnh sửa thông tin phòng (nút i)"
+              >
+                {activeRoom.avatar ? (
+                  <img src={activeRoom.avatar} alt={activeRoom.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                ) : activeRoom.id === 'public-relay-lounge' ? (
+                  <img src={DEFAULT_GLOBAL_LOUNGE_AVATAR} alt="Đại Sảnh Toàn Cầu" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                ) : (
+                  <span>{(activeRoom.name || 'P').charAt(0).toUpperCase()}</span>
+                )}
+              </div>
+
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-sm sm:text-base font-bold text-white truncate">
@@ -797,8 +886,18 @@ export const ChatRoomView: React.FC = () => {
               </div>
             </div>
 
-            {/* "i" Icon button replacing "Relay Trực Tuyến" */}
+            {/* Action buttons: Rules & Info */}
             <div className="flex items-center gap-2 shrink-0">
+              <button
+                id="room-rules-btn"
+                type="button"
+                onClick={() => setShowRules(true)}
+                title="Xem Bảng Nội Quy & Điều Khoản Sử Dụng (Căn cứ xử lý vi phạm trong phòng)"
+                className="w-9 h-9 rounded-full bg-slate-800 hover:bg-amber-500/20 text-slate-300 hover:text-amber-400 border border-slate-700/80 hover:border-amber-500/40 flex items-center justify-center shadow-sm active:scale-95 transition-all group"
+              >
+                <Scale className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
+              </button>
+
               <button
                 id="room-info-i-btn"
                 type="button"
@@ -994,7 +1093,7 @@ export const ChatRoomView: React.FC = () => {
                     {/* Text Message */}
                     {msg.text && (
                       <p className="text-sm sm:text-base leading-relaxed whitespace-pre-wrap break-words">
-                        {msg.text}
+                        {censorProfanity(msg.text).cleanText}
                       </p>
                     )}
                   </div>
@@ -1157,87 +1256,6 @@ export const ChatRoomView: React.FC = () => {
               <Paperclip className="w-5 h-5" />
             </button>
 
-            {/* Self-Destruct Image Toggle Button */}
-            <div className="relative">
-              <button
-                id="toggle-self-destruct-btn"
-                type="button"
-                onClick={() => setShowSelfDestructMenu(!showSelfDestructMenu)}
-                title="Chế độ Ảnh tự hủy (Xem 1 lần hoặc hẹn giờ tự tiêu hủy)"
-                className={`p-3 rounded-xl border transition-all shrink-0 flex items-center gap-1.5 ${
-                  selfDestructMode !== 'off'
-                    ? 'bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 border-orange-500/50 shadow-md shadow-orange-500/20'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-orange-400 border-slate-700'
-                }`}
-              >
-                <Flame className={`w-5 h-5 ${selfDestructMode !== 'off' ? 'animate-bounce text-orange-400' : ''}`} />
-                {selfDestructMode !== 'off' && (
-                  <span className="text-xs font-bold hidden sm:inline">
-                    {selfDestructMode === 'view_once' ? '1 lần' : selfDestructMode === '10s' ? '10s' : '30s'}
-                  </span>
-                )}
-              </button>
-
-              {/* Dropdown Options */}
-              {showSelfDestructMenu && (
-                <div className="absolute bottom-full mb-2 left-0 w-52 bg-slate-900 border border-slate-700 rounded-2xl p-2 shadow-2xl z-40 space-y-1 animate-in fade-in zoom-in-95 duration-150">
-                  <div className="px-2.5 py-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-800">
-                    <Flame className="w-3.5 h-3.5 text-orange-400" />
-                    <span>Ảnh tự hủy</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => { setSelfDestructMode('off'); setShowSelfDestructMenu(false); }}
-                    className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${
-                      selfDestructMode === 'off' ? 'bg-slate-800 text-white font-semibold' : 'text-slate-300 hover:bg-slate-800/60'
-                    }`}
-                  >
-                    <span>Tắt (Lưu thường)</span>
-                    {selfDestructMode === 'off' && <Check className="w-3.5 h-3.5 text-emerald-400" />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setSelfDestructMode('view_once'); setShowSelfDestructMenu(false); }}
-                    className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${
-                      selfDestructMode === 'view_once' ? 'bg-orange-500/20 text-orange-300 font-semibold border border-orange-500/30' : 'text-slate-300 hover:bg-slate-800/60'
-                    }`}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <Flame className="w-3.5 h-3.5 text-orange-400" />
-                      Xem 1 lần (View-Once)
-                    </span>
-                    {selfDestructMode === 'view_once' && <Check className="w-3.5 h-3.5 text-orange-400" />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setSelfDestructMode('10s'); setShowSelfDestructMenu(false); }}
-                    className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${
-                      selfDestructMode === '10s' ? 'bg-orange-500/20 text-orange-300 font-semibold border border-orange-500/30' : 'text-slate-300 hover:bg-slate-800/60'
-                    }`}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-orange-400" />
-                      Tự hủy sau 10 giây
-                    </span>
-                    {selfDestructMode === '10s' && <Check className="w-3.5 h-3.5 text-orange-400" />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setSelfDestructMode('30s'); setShowSelfDestructMenu(false); }}
-                    className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${
-                      selfDestructMode === '30s' ? 'bg-orange-500/20 text-orange-300 font-semibold border border-orange-500/30' : 'text-slate-300 hover:bg-slate-800/60'
-                    }`}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-orange-400" />
-                      Tự hủy sau 30 giây
-                    </span>
-                    {selfDestructMode === '30s' && <Check className="w-3.5 h-3.5 text-orange-400" />}
-                  </button>
-                </div>
-              )}
-            </div>
-
             {/* Text Input with Paste listener */}
             <input
               id="chat-message-input"
@@ -1283,6 +1301,72 @@ export const ChatRoomView: React.FC = () => {
             </div>
 
             <form onSubmit={handleCreateRoom} className="space-y-4">
+              {/* Ảnh đại diện & Biểu tượng nhóm */}
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                  Ảnh đại diện & Biểu tượng nhóm
+                </label>
+                <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-slate-950/60 border border-slate-800">
+                  <div 
+                    className="w-14 h-14 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-md shrink-0 border border-white/10 overflow-hidden relative"
+                    style={{ backgroundColor: newRoomColor }}
+                  >
+                    {newRoomAvatar ? (
+                      <img src={newRoomAvatar} alt="Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <span>{(newRoomName.trim() || 'R').charAt(0).toUpperCase()}</span>
+                    )}
+                  </div>
+
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <label className="cursor-pointer px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white border border-slate-700 flex items-center gap-1.5 transition-colors">
+                        <Camera className="w-3.5 h-3.5" />
+                        Tải ảnh lên
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onload = (ev) => {
+                              setNewRoomAvatar(ev.target?.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }} 
+                          className="hidden" 
+                        />
+                      </label>
+                      {newRoomAvatar && (
+                        <button
+                          type="button"
+                          onClick={() => setNewRoomAvatar('')}
+                          className="px-2.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs transition-colors"
+                        >
+                          Dùng icon mặc định
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] text-slate-400 mr-1">Màu nền:</span>
+                      {ROOM_PRESET_COLORS.map((col) => (
+                        <button
+                          key={col}
+                          type="button"
+                          onClick={() => setNewRoomColor(col)}
+                          className={`w-5 h-5 rounded-full transition-transform ${
+                            newRoomColor === col ? 'scale-125 ring-2 ring-white ring-offset-2 ring-offset-slate-900' : 'hover:scale-110'
+                          }`}
+                          style={{ backgroundColor: col }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Dòng 1: Tên phòng */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
@@ -1406,6 +1490,14 @@ export const ChatRoomView: React.FC = () => {
           message={activeDestructMessage}
           onClose={() => setActiveDestructMessage(null)}
           onDestruct={handleDeleteMessage}
+        />
+      )}
+
+      {/* Community Rules & Conduct Modal */}
+      {showRules && (
+        <RulesModal
+          isOpen={showRules}
+          onClose={() => setShowRules(false)}
         />
       )}
     </div>

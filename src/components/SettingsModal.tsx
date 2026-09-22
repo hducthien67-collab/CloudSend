@@ -18,24 +18,42 @@ import {
   Palette,
   RefreshCw,
   Lock,
-  Cpu
+  Cpu,
+  ShieldAlert,
+  ExternalLink,
+  Database,
+  Tv,
+  Sliders,
+  Scale
 } from 'lucide-react';
 import { DeviceType } from '../types';
 import { AVATAR_COLORS, getDeviceTypeInfo } from '../utils/device';
 import { playReceiveSound } from '../utils/sound';
+import { isDevUser } from '../utils/devModeration';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenRules?: () => void;
+  onOpenDevConsole?: () => void;
+  onOpenDevPage?: () => void;
 }
 
-export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
+export const SettingsModal: React.FC<SettingsModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  onOpenRules, 
+  onOpenDevConsole,
+  onOpenDevPage 
+}) => {
   const { currentUser, userProfile, settings, updateSettings, logout } = useAuth();
   
   const [deviceName, setDeviceName] = useState(settings.deviceName);
   const [avatarColor, setAvatarColor] = useState(settings.avatarColor);
   const [autoAccept, setAutoAccept] = useState(settings.autoAccept);
   const [soundEnabled, setSoundEnabled] = useState(settings.soundEnabled);
+  const [tvModeEnabled, setTvModeEnabled] = useState(settings.tvModeEnabled ?? (settings.deviceType === 'tv'));
+  const [tvDpiScale, setTvDpiScale] = useState(settings.tvDpiScale || 1.4);
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
@@ -46,6 +64,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       setAvatarColor(settings.avatarColor);
       setAutoAccept(settings.autoAccept);
       setSoundEnabled(settings.soundEnabled);
+      setTvModeEnabled(settings.tvModeEnabled ?? (settings.deviceType === 'tv'));
+      setTvDpiScale(settings.tvDpiScale || 1.4);
     }
   }, [isOpen, settings]);
 
@@ -58,6 +78,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       avatarColor,
       autoAccept,
       soundEnabled,
+      tvModeEnabled,
+      tvDpiScale,
     });
     setIsSaving(false);
     setSavedSuccess(true);
@@ -78,6 +100,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         return <Tablet className="w-5 h-5 text-emerald-400" />;
       case 'desktop':
         return <Monitor className="w-5 h-5 text-emerald-400" />;
+      case 'tv':
+        return <Tv className="w-5 h-5 text-emerald-400" />;
       case 'laptop':
       default:
         return <Laptop className="w-5 h-5 text-emerald-400" />;
@@ -244,6 +268,105 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             </div>
           </div>
 
+          {/* Section: Smart TV & TV DPI Scaling Fix */}
+          <div className="space-y-3 pt-4 border-t border-slate-800/80">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Tv className="w-3.5 h-3.5" />
+                Chế độ Smart TV & Sửa lỗi DPI Màn hình lớn
+              </h3>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold">
+                10-Foot UI
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {/* TV Mode Switch */}
+              <label className="flex items-center justify-between p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 hover:border-slate-700 cursor-pointer transition-colors">
+                <div className="pr-3">
+                  <div className="text-xs sm:text-sm font-semibold text-white flex items-center gap-2">
+                    <span>Kích hoạt Chế độ Tivi (Smart TV Mode)</span>
+                    {tvModeEnabled && (
+                      <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        Đang bật
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
+                    Tối ưu giao diện cho màn hình Tivi (Samsung Tizen, LG WebOS, Android TV). Tự động nhận diện thiết bị là Smart TV trên mạng và hỗ trợ điều khiển Remote D-Pad.
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={tvModeEnabled}
+                  onChange={(e) => setTvModeEnabled(e.target.checked)}
+                  className="w-5 h-5 rounded text-amber-500 bg-slate-900 border-slate-700 focus:ring-amber-500 focus:ring-offset-slate-900 shrink-0"
+                />
+              </label>
+
+              {/* TV DPI Zoom Selector */}
+              <div className={`p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2.5 transition-all ${
+                !tvModeEnabled ? 'opacity-60' : ''
+              }`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-white flex items-center gap-1.5">
+                    <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                    Tỷ lệ phóng to DPI TV (Khắc phục lỗi chữ nhỏ trên TV)
+                  </span>
+                  <span className="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                    {Math.round(tvDpiScale * 100)}%
+                  </span>
+                </div>
+                
+                <p className="text-[11px] text-slate-400">
+                  Trình duyệt TV thường bị lỗi DPI khiến chữ và nút bấm quá nhỏ khi nhìn từ xa. Hãy chọn mức phóng to phù hợp với kích thước TV của bạn:
+                </p>
+
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 pt-1">
+                  {[
+                    { scale: 1.0, label: '100%', note: 'Chuẩn PC' },
+                    { scale: 1.25, label: '125%', note: 'TV 32-43"' },
+                    { scale: 1.4, label: '140%', note: 'TV 49-55" (Chuẩn)' },
+                    { scale: 1.6, label: '160%', note: 'TV 65-75"' },
+                    { scale: 1.85, label: '185%', note: 'TV 4K Siêu to' },
+                  ].map((preset) => {
+                    const isSelected = Math.abs(tvDpiScale - preset.scale) < 0.05;
+                    return (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => {
+                          setTvDpiScale(preset.scale);
+                          if (!tvModeEnabled) setTvModeEnabled(true);
+                        }}
+                        className={`p-2 rounded-xl text-center border transition-all ${
+                          isSelected
+                            ? 'bg-amber-500/20 border-amber-500 text-amber-300 shadow-sm'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="text-xs font-bold">{preset.label}</div>
+                        <div className="text-[9px] text-slate-500 mt-0.5">{preset.note}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* TV Remote Navigation Tip */}
+              <div className="p-3 rounded-xl bg-slate-950/40 border border-slate-800/80 text-[11px] text-slate-400 space-y-1">
+                <div className="font-semibold text-slate-300 flex items-center gap-1.5">
+                  <span>🎮 Hỗ trợ phím Điều khiển Tivi (Remote Control)</span>
+                </div>
+                <ul className="list-disc list-inside space-y-0.5 text-slate-400 pl-1">
+                  <li><strong>Mũi tên Trái / Phải:</strong> Chuyển nhanh giữa tab Gửi, Nhận và Phòng Chat.</li>
+                  <li><strong>Phím OK / Enter:</strong> Chọn nút và gửi/tải tệp.</li>
+                  <li><strong>Phím Back / Return:</strong> Thoát menu cài đặt hoặc đóng cửa sổ.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
           {/* Section 3: Intermediate Server Info */}
           <div className="space-y-3 pt-4 border-t border-slate-800/80">
             <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -308,6 +431,81 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 Đăng xuất
               </button>
             </div>
+
+            {/* Community Rules & Legal Terms Card */}
+            {onOpenRules && (
+              <div className="mt-3 p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
+                    <Scale className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                      Nội Quy & Điều Khoản Sử Dụng CloudSend
+                    </div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">
+                      Danh sách các điều cấm (từ ngữ thô tục, 18+, virus, lừa đảo) và khung chế tài xử lý vi phạm.
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenRules();
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 hover:text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shrink-0"
+                >
+                  <Scale className="w-3.5 h-3.5" />
+                  <span>Xem Bảng Nội Quy</span>
+                </button>
+              </div>
+            )}
+
+            {/* Special DEV Console Access (Restricted to Developer only) */}
+            {isDevUser(currentUser?.email) && (
+              <div className="mt-3 p-3.5 rounded-xl bg-gradient-to-r from-emerald-950/40 via-slate-900 to-emerald-900/20 border border-emerald-500/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                    <Database className="w-4 h-4 text-emerald-400" />
+                    Quyền hạn DEV: Datastore & Quản trị Hệ thống
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">
+                    Kho dữ liệu Firestore trực tiếp (users, rooms, messages, transfers, presence, sanctions) & Bảng kỷ luật.
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      if (onOpenDevPage) {
+                        onOpenDevPage();
+                      } else {
+                        window.location.href = '/?page=datastore';
+                      }
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-600/30 flex items-center gap-1.5 transition-all"
+                  >
+                    <Database className="w-3.5 h-3.5" />
+                    <span>Mở DATASTORE</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      window.open('/?page=datastore', '_blank');
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 transition-all flex items-center gap-1"
+                  >
+                    <span>Tab mới</span>
+                    <ExternalLink className="w-3 h-3 text-emerald-400" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

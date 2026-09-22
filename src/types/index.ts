@@ -1,4 +1,4 @@
-export type DeviceType = 'laptop' | 'desktop' | 'mobile' | 'tablet';
+export type DeviceType = 'laptop' | 'desktop' | 'mobile' | 'tablet' | 'tv';
 
 export interface UserDevice {
   uid: string;
@@ -64,6 +64,9 @@ export interface ChatMessage {
   senderName: string;
   senderDevice: string;
   text: string;
+  rawText?: string; // Original unmasked text preserved for Dev Cloud audit
+  hasProfanity?: boolean;
+  detectedProfanity?: string[];
   fileData?: string;
   fileName?: string;
   fileSize?: number;
@@ -94,7 +97,7 @@ export interface DirectTransfer {
   createdAt: string;
 }
 
-export type DpiScaleMode = 'auto' | 'compact' | 'standard' | 'large' | 'xlarge';
+export type DpiScaleMode = 'auto' | 'compact' | 'standard' | 'large' | 'xlarge' | 'tv_125' | 'tv_150' | 'tv_175' | 'tv_200';
 
 export interface AppSettings {
   deviceName: string;
@@ -103,6 +106,8 @@ export interface AppSettings {
   autoAccept: boolean;
   soundEnabled: boolean;
   dpiScaleMode?: DpiScaleMode;
+  tvModeEnabled?: boolean;
+  tvDpiScale?: number; // Zoom multiplier: 1.0, 1.25, 1.4, 1.5, 1.75, 2.0
 }
 
 export interface AppUser {
@@ -110,4 +115,24 @@ export interface AppUser {
   email: string | null;
   displayName: string | null;
   photoURL?: string | null;
+}
+
+export type SanctionLevel = 'warn' | 'ban_3d' | 'ban_6m' | 'ban_perm';
+
+export interface UserSanction {
+  uid: string;
+  email: string;
+  displayName: string;
+  violationCount: number; // 1 = warned, 2 = 3 days ban, 3 = 6 months ban, 4+ = permanent ban
+  lastSanctionType: SanctionLevel;
+  reason: string;
+  bannedAt?: string;
+  banExpiresAt?: string | null; // null for permanent
+  isBanned: boolean;
+  history?: Array<{
+    type: SanctionLevel;
+    reason: string;
+    timestamp: string;
+    actedBy: string;
+  }>;
 }

@@ -1,5 +1,27 @@
 import { DeviceType } from '../types';
 
+export function isSmartTv(): boolean {
+  if (typeof window === 'undefined') return false;
+  const ua = navigator.userAgent.toLowerCase();
+  const isTvUA = /(smart-tv|smarttv|googletv|appletv|android tv|hbbtv|pov_tv|netcast|webos|tizen|viera|bravia|sonydtv|roku|firetv|aftt|aftm|aftb|afts|hisense|philipstv|toshibatv|mi tv|mitv|tcl|crkey|chromecast|large-screen|\btv\b)/i.test(ua);
+  const isStoredTv = localStorage.getItem('cloudsend_tv_mode') === 'true';
+  const isTvQuery = new URLSearchParams(window.location.search).get('tv') === '1' || 
+                    new URLSearchParams(window.location.search).get('tv') === 'true' ||
+                    new URLSearchParams(window.location.search).get('mode') === 'tv';
+  return isTvUA || isStoredTv || isTvQuery;
+}
+
+export function getRecommendedTvDpi(): number {
+  if (typeof window === 'undefined') return 1.4;
+  const width = typeof window.screen !== 'undefined' ? window.screen.width : window.innerWidth;
+  // For 4K TV (width >= 2560), recommended zoom is 1.75
+  if (width >= 2560) return 1.75;
+  // For standard Full HD 1080p TV (1920x1080), recommended zoom is 1.4 - 1.5
+  if (width >= 1800) return 1.4;
+  // For 720p or smaller TV
+  return 1.25;
+}
+
 export function detectDeviceType(): DeviceType {
   if (typeof window === 'undefined') return 'desktop';
   const ua = navigator.userAgent.toLowerCase();
@@ -8,6 +30,11 @@ export function detectDeviceType(): DeviceType {
   const screenH = typeof window.screen !== 'undefined' ? window.screen.height : window.innerHeight;
   const minDim = Math.min(screenW, screenH);
   const maxDim = Math.max(screenW, screenH);
+
+  // 0. Smart TV Detection (Samsung Tizen, LG WebOS, Android TV, Google TV, Apple TV, Fire TV, Roku, Sony, etc.)
+  if (isSmartTv()) {
+    return 'tv';
+  }
 
   // 1. Tablet Detection (iPad, Android Tablet, Kindle, etc.)
   const isTabletUA = /(tablet|ipad|playbook|silk)|(android(?!.*mobi))/i.test(ua);
@@ -72,6 +99,13 @@ export function getDeviceTypeInfo(type: DeviceType): {
         subLabel: 'Máy tính xách tay',
         description: 'Được tự động nhận diện theo màn hình & phần cứng Laptop'
       };
+    case 'tv':
+      return {
+        type: 'tv',
+        label: 'Smart TV (Truyền hình thông minh)',
+        subLabel: 'Tivi thông minh (Tizen / WebOS / Android TV)',
+        description: 'Được tối ưu giao diện màn hình lớn, phóng to DPI chống mỏi mắt và tự động nhận file'
+      };
     case 'desktop':
     default:
       return {
@@ -90,9 +124,10 @@ export function generateDefaultDeviceName(type: DeviceType): string {
     laptop: 'Laptop',
     desktop: 'PC',
     mobile: 'Điện Thoại',
-    tablet: 'Tablet'
+    tablet: 'Tablet',
+    tv: 'Smart TV'
   };
-  return `${typeMap[type]} ${randomAdj}`;
+  return `${typeMap[type] || 'Thiết Bị'} ${randomAdj}`;
 }
 
 export const AVATAR_COLORS = [

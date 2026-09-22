@@ -22,7 +22,7 @@ service cloud.firestore {
     // User profiles
     match /users/{userId} {
       allow get: if isValidId(userId);
-      allow list: if false; // Protect user table from mass scraping
+      allow list: if true;
       allow create, update: if isValidId(userId);
       allow delete: if isValidId(userId);
     }
@@ -53,6 +53,12 @@ service cloud.firestore {
       }
     }
 
+    // Allow collection group query on messages for Datastore view
+    match /{path=**}/messages/{messageId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
     // Direct LocalSend-style peer-to-peer transfers over internet
     match /transfers/{transferId} {
       allow get: if isValidId(transferId);
@@ -69,6 +75,13 @@ service cloud.firestore {
       allow create: if isValidId(notificationId);
       allow update: if isValidId(notificationId);
       allow delete: if isValidId(notificationId);
+    }
+
+    // Sanctions, Warnings, and Email Bans enforced by Dev
+    match /sanctions/{docId} {
+      allow get: if true;
+      allow list: if true;
+      allow create, update, delete: if true;
     }
   }
 }

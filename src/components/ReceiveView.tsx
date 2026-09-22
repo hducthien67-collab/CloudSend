@@ -28,7 +28,9 @@ import {
   Trash2,
   CheckCircle2,
   Share2,
-  Sparkles
+  Sparkles,
+  Tv,
+  Sliders
 } from 'lucide-react';
 import { formatFileSize } from '../utils/device';
 import { playReceiveSound } from '../utils/sound';
@@ -124,8 +126,76 @@ export const ReceiveView: React.FC = () => {
     document.body.removeChild(a);
   };
 
+  const isTv = settings.deviceType === 'tv' || settings.tvModeEnabled;
+
   return (
     <div className="w-full max-w-6xl 2xl:max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-6 sm:space-y-8">
+      {/* Smart TV Leanback Banner (Specially designed for 10-foot TV viewing) */}
+      {isTv && (
+        <div className="bg-gradient-to-r from-amber-500/15 via-emerald-500/10 to-teal-500/15 border-2 border-amber-500/40 rounded-2xl p-4 sm:p-6 shadow-xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center shrink-0 shadow-lg shadow-amber-500/10">
+                <Tv className="w-7 h-7 sm:w-8 sm:h-8 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base sm:text-lg font-bold text-white tracking-wide">
+                    Chế độ Smart TV (Truyền hình thông minh)
+                  </h3>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    Đã tối ưu DPI
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-300 mt-0.5">
+                  Đã tự động tăng kích thước hiển thị chống mỏi mắt. Mở CloudSend trên Điện thoại/Máy tính và chọn <strong className="text-emerald-400">"{settings.deviceName}"</strong> để gửi ảnh, video hoặc tệp lên TV này.
+                </p>
+              </div>
+            </div>
+
+            {/* TV DPI Quick Zoom Selector */}
+            <div className="flex items-center gap-1.5 bg-slate-950/80 p-1.5 rounded-xl border border-slate-800 self-start sm:self-auto shrink-0">
+              <span className="text-[11px] font-semibold text-slate-400 px-2 flex items-center gap-1">
+                <Sliders className="w-3 h-3 text-amber-400" />
+                DPI TV:
+              </span>
+              {[
+                { scale: 1.25, label: '125%' },
+                { scale: 1.4, label: '140%' },
+                { scale: 1.5, label: '150%' },
+                { scale: 1.75, label: '175%' },
+                { scale: 2.0, label: '200%' },
+              ].map(({ scale, label }) => {
+                const isSelected = Math.abs((settings.tvDpiScale || 1.4) - scale) < 0.05;
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => updateSettings({ tvDpiScale: scale, tvModeEnabled: true })}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                      isSelected
+                        ? 'bg-emerald-500 text-slate-950 shadow'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="text-[11px] text-slate-400 border-t border-slate-800/80 pt-3 flex flex-wrap items-center gap-4">
+            <span className="flex items-center gap-1">
+              🎮 <strong>Điều khiển từ xa (Remote):</strong> Dùng phím Mũi tên [⬅️ ➡️] chuyển Tab, [OK] chọn nút, [Back] quay lại.
+            </span>
+            <span className="flex items-center gap-1 text-emerald-400 font-semibold">
+              ⚡ Tự động nhận tệp (Auto Accept) đang bật cho TV.
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Ready to Receive Status Card (LocalSend style) */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-8 shadow-xl relative overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">

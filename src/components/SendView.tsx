@@ -21,6 +21,7 @@ import {
   Smartphone, 
   Monitor, 
   Tablet, 
+  Tv,
   Globe, 
   Search, 
   Check, 
@@ -38,6 +39,7 @@ import {
 } from 'lucide-react';
 import { formatFileSize } from '../utils/device';
 import { playSendSound } from '../utils/sound';
+import { censorProfanity } from '../utils/moderation';
 
 export const SendView: React.FC = () => {
   const { currentUser, userProfile, settings } = useAuth();
@@ -192,7 +194,7 @@ export const SendView: React.FC = () => {
         payload.fileType = selectedFile.type || 'application/octet-stream';
         payload.fileData = fileBase64;
       } else {
-        payload.textContent = textContent.trim();
+        payload.textContent = censorProfanity(textContent.trim()).cleanText;
       }
 
       await addDoc(collection(db, 'transfers'), payload);
@@ -239,6 +241,7 @@ export const SendView: React.FC = () => {
       case 'mobile': return <Smartphone className="w-5 h-5" />;
       case 'tablet': return <Tablet className="w-5 h-5" />;
       case 'desktop': return <Monitor className="w-5 h-5" />;
+      case 'tv': return <Tv className="w-5 h-5 text-emerald-400" />;
       default: return <Laptop className="w-5 h-5" />;
     }
   };
