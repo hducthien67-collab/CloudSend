@@ -34,28 +34,43 @@
     <meta name="twitter:title" content="CloudSend - Chia Sẻ Tệp Tin & Phòng Chat Trực Tuyến Qua Internet" />
     <meta name="twitter:description" content="Nền tảng chia sẻ tệp tin và phòng chat trực tuyến qua Internet đa nền tảng, an toàn, tốc độ cao phong cách LocalSend." />
 
-    <!-- Schema.org WebApplication Structured Data for Google Search Rich Results -->
+    <!-- Schema.org Structured Data (WebSite + WebApplication) for Google Search Site Name & Rich Results -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "WebApplication",
-      "name": "CloudSend",
-      "alternateName": ["CloudSend LocalSend", "CloudSend Web"],
-      "url": "https://ais-pre-6meml64gzocfwtvgz53pxj-499192341753.asia-southeast1.run.app/",
-      "applicationCategory": "UtilitiesApplication",
-      "operatingSystem": "All, Android, iOS, Windows, macOS, Linux",
-      "description": "Nền tảng chia sẻ tệp tin và phòng chat trực tuyến qua Internet đa nền tảng phong cách LocalSend.",
-      "featureList": [
-        "Gửi và nhận tệp tin tức thì qua mạng Internet",
-        "Phòng chat trực tuyến thời gian thực",
-        "Hỗ trợ gửi nhiều hình ảnh cùng lúc chất lượng cao",
-        "Tự động nhận diện và tương thích DPI trên điện thoại di động và máy tính"
-      ],
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "VND"
-      }
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://ais-pre-6meml64gzocfwtvgz53pxj-499192341753.asia-southeast1.run.app/#website",
+          "name": "CloudSend",
+          "alternateName": ["Cloud Send", "CloudSend Web", "CloudSend LocalSend"],
+          "url": "https://ais-pre-6meml64gzocfwtvgz53pxj-499192341753.asia-southeast1.run.app/",
+          "description": "Nền tảng chia sẻ tệp tin và phòng chat trực tuyến qua Internet đa nền tảng, an toàn, tốc độ cao phong cách LocalSend.",
+          "inLanguage": "vi"
+        },
+        {
+          "@type": "WebApplication",
+          "@id": "https://ais-pre-6meml64gzocfwtvgz53pxj-499192341753.asia-southeast1.run.app/#webapp",
+          "name": "CloudSend",
+          "alternateName": ["CloudSend LocalSend", "CloudSend Web", "Cloud Send"],
+          "url": "https://ais-pre-6meml64gzocfwtvgz53pxj-499192341753.asia-southeast1.run.app/",
+          "applicationCategory": "UtilitiesApplication",
+          "operatingSystem": "All, Android, iOS, Windows, macOS, Linux",
+          "description": "Nền tảng chia sẻ tệp tin và phòng chat trực tuyến qua Internet đa nền tảng phong cách LocalSend.",
+          "inLanguage": "vi",
+          "featureList": [
+            "Gửi và nhận tệp tin tức thì qua mạng Internet",
+            "Phòng chat trực tuyến thời gian thực",
+            "Hỗ trợ gửi nhiều hình ảnh cùng lúc chất lượng cao",
+            "Tự động nhận diện và tương thích DPI trên điện thoại di động và máy tính"
+          ],
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "VND"
+          }
+        }
+      ]
     }
     </script>
   </head>

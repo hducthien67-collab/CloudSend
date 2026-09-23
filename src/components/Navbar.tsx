@@ -65,7 +65,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-bold text-white text-sm sm:text-base tracking-tight">CloudSend</span>
+                <h1 className="font-bold text-white text-sm sm:text-base tracking-tight m-0 p-0 inline-block leading-none">CloudSend</h1>
                 <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-mono font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                   <Radio className="w-2.5 h-2.5 animate-pulse" />
                   Relay
