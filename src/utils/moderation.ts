@@ -339,7 +339,12 @@ export async function scanImageHeuristics(dataUrl: string, fileName = ''): Promi
  * Combines local heuristic scan + server AI check when available.
  */
 export async function moderateUploadedImage(dataUrl: string, fileName = ''): Promise<ImageModerationResult> {
-  // 1. Fast local computer-vision scan
+  // If no base64 dataUrl (e.g., heavy file awaiting server upload or HEIC), allow pass through
+  if (!dataUrl || !dataUrl.startsWith('data:image/')) {
+    return { safe: true, category: 'clean' };
+  }
+
+  // 1. Fast local heuristic scan (catches obvious porn keyword filenames)
   const localScan = await scanImageHeuristics(dataUrl, fileName);
   if (!localScan.safe) {
     return localScan;
@@ -363,13 +368,13 @@ export async function moderateUploadedImage(dataUrl: string, fileName = ''): Pro
       if (data && data.safe === false) {
         return {
           safe: false,
-          reason: data.reason || 'Ảnh đã tự động bị hủy và xóa khỏi nội dung gửi vì phát hiện vi phạm tiêu chuẩn 18+ / nhạy cảm.',
+          reason: data.reason || 'Ảnh đã tự động bị hủy khỏi nội dung gửi do vi phạm tiêu chuẩn nghiêm cấm.',
           category: data.category || 'nsfw_sex'
         };
       }
     }
   } catch {
-    // If server is not reachable, timed out or running SPA mode, fall back to local heuristic scan safely
+    // If server is not reachable, timed out or in offline mode, fall back to safe pass
   }
 
   return { safe: true, category: 'clean' };

@@ -6,11 +6,24 @@ export interface UploadedFileInfo {
   type: string;
   url: string;
   viewUrl: string;
+  thumbnail?: string;
+  isHeic?: boolean;
 }
 
 // 250 MB limit
 export const MAX_FILE_SIZE = 250 * 1024 * 1024;
 export const MAX_FILE_SIZE_LABEL = '250 MB';
+
+/**
+ * Checks if a file is an image based on mimeType or common extensions
+ * (handles phone camera photos, iPhone HEIC/HEIF, RAW, etc.)
+ */
+export function isImageFile(file?: { name?: string; type?: string } | null): boolean {
+  if (!file) return false;
+  if (file.type && file.type.startsWith('image/')) return true;
+  const ext = (file.name || '').toLowerCase();
+  return /\.(jpe?g|png|gif|webp|heic|heif|bmp|tiff?|dng|raw|svg|avif)$/i.test(ext);
+}
 
 /**
  * Formats file size in readable units
@@ -25,10 +38,18 @@ export function formatFileSize(bytes?: number): string {
 
 /**
  * Creates a fast lightweight base64 thumbnail for images (for immediate chat/card preview)
+ * Safely handles HEIC and phone photos without corrupting base64.
  */
 export function generateImageThumbnail(file: File, maxDim: number = 480, quality: number = 0.75): Promise<string> {
   return new Promise((resolve) => {
-    if (!file.type.startsWith('image/')) {
+    if (!isImageFile(file)) {
+      resolve('');
+      return;
+    }
+
+    const lowerName = file.name.toLowerCase();
+    // Native browser Image() cannot decode HEIC/HEIF; let the server thumbnail handle it
+    if (lowerName.endsWith('.heic') || lowerName.endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif') {
       resolve('');
       return;
     }
@@ -36,6 +57,11 @@ export function generateImageThumbnail(file: File, maxDim: number = 480, quality
     const reader = new FileReader();
     reader.onload = (e) => {
       const rawData = e.target?.result as string;
+      if (!rawData || !rawData.startsWith('data:image/')) {
+        resolve('');
+        return;
+      }
+
       const img = new Image();
       img.onload = () => {
         let { width, height } = img;
@@ -57,11 +83,11 @@ export function generateImageThumbnail(file: File, maxDim: number = 480, quality
           const thumb = canvas.toDataURL('image/jpeg', quality);
           resolve(thumb);
         } else {
-          resolve(rawData.slice(0, 100000));
+          resolve('');
         }
       };
       img.onerror = () => {
-        resolve(rawData.slice(0, 100000));
+        resolve('');
       };
       img.src = rawData;
     };

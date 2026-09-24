@@ -58,6 +58,7 @@ import { isDevUser } from '../utils/devModeration';
 import { 
   uploadFileToServer, 
   generateImageThumbnail, 
+  isImageFile,
   MAX_FILE_SIZE, 
   MAX_FILE_SIZE_LABEL 
 } from '../utils/fileUpload';
@@ -303,14 +304,20 @@ export const ChatRoomView: React.FC = () => {
     // Generate lightweight preview thumbnail
     const thumb = await generateImageThumbnail(file, 800, 0.75);
 
-    // If file is > 200KB, upload full quality original to server
+    // If file is > 200KB or if it is HEIC/HEIF (which needs server conversion for browsers), upload to server
     let fileUrl: string | undefined = undefined;
-    if (file.size > 200 * 1024) {
+    let serverThumb: string | undefined = undefined;
+    const isHeic = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif';
+
+    if (file.size > 200 * 1024 || isHeic || !thumb) {
       try {
         const uploaded = await uploadFileToServer(file, (pct) => {
-          setUploadProgressText(`Đang tải ảnh "${file.name}" (${pct}%)...`);
+          setUploadProgressText(`Đang xử lý ảnh "${file.name}" (${pct}%)...`);
         });
         fileUrl = uploaded.url;
+        if (uploaded.thumbnail) {
+          serverThumb = uploaded.thumbnail;
+        }
       } catch (err) {
         console.warn('Could not upload original image to server, fallback to thumbnail:', err);
       }
@@ -319,8 +326,8 @@ export const ChatRoomView: React.FC = () => {
     return {
       name: file.name,
       size: file.size,
-      type: file.type || 'image/jpeg',
-      data: thumb || '',
+      type: isHeic ? 'image/heic' : (file.type || 'image/jpeg'),
+      data: serverThumb || thumb || '',
       url: fileUrl
     };
   };
@@ -365,18 +372,20 @@ export const ChatRoomView: React.FC = () => {
     try {
       const newAttachments: ChatAttachment[] = [];
       for (const file of itemsToProcess) {
-        if (file.type.startsWith('image/')) {
+        if (isImageFile(file)) {
           const processed = await compressImage(file);
           // Content Moderation check for 18+ and extreme gore
-          const modResult = await moderateUploadedImage(processed.data, file.name);
-          if (!modResult.safe) {
-            playShieldAlertSound();
-            setModerationWarning(
-              modResult.reason || 
-              `🚫 ĐÃ TỰ ĐỘNG HỦY VÀ XÓA ẢNH KHỎI NỘI DUNG CẦN GỬI: Ảnh "${file.name}" đã tự hủy do phát hiện vi phạm tiêu chuẩn 18+ (nội dung nhạy cảm/khiêu dâm).`
-            );
-            setTimeout(() => setModerationWarning(null), 8000);
-            continue; // Skip this file immediately - auto deleted from sending list!
+          if (processed.data) {
+            const modResult = await moderateUploadedImage(processed.data, file.name);
+            if (!modResult.safe) {
+              playShieldAlertSound();
+              setModerationWarning(
+                modResult.reason || 
+                `🚫 Ảnh "${file.name}" đã bị hủy do vi phạm tiêu chuẩn nghiêm cấm.`
+              );
+              setTimeout(() => setModerationWarning(null), 8000);
+              continue; // Skip this file immediately
+            }
           }
           newAttachments.push(processed);
         } else {
@@ -471,16 +480,16 @@ export const ChatRoomView: React.FC = () => {
       setTimeout(() => setModerationWarning(null), 5000);
     }
     
-    // Safety check on outgoing attachments: auto-purge any 18+ images
+    // Safety check on outgoing attachments: auto-purge any strictly forbidden images
     const safeAttachments: ChatAttachment[] = [];
     const purgedNames: string[] = [];
 
     for (const att of attachments) {
-      if (att.type.startsWith('image/')) {
+      if (isImageFile(att) && att.data) {
         const check = await moderateUploadedImage(att.data, att.name);
         if (!check.safe) {
           purgedNames.push(att.name);
-          continue; // Automatically purged from payload!
+          continue; // Automatically purged from payload
         }
       }
       safeAttachments.push(att);
@@ -489,7 +498,7 @@ export const ChatRoomView: React.FC = () => {
     if (purgedNames.length > 0) {
       playShieldAlertSound();
       setModerationWarning(
-        `🚫 ĐÃ TỰ ĐỘNG HỦY VÀ XÓA ${purgedNames.length} ẢNH KHỎI NỘI DUNG CẦN GỬI: Ảnh [${purgedNames.join(', ')}] vi phạm tiêu chuẩn 18+ và đã bị loại bỏ hoàn toàn.`
+        `🚫 Đã hủy ${purgedNames.length} tệp [${purgedNames.join(', ')}] do vi phạm tiêu chuẩn nghiêm cấm.`
       );
       setAttachments(safeAttachments);
       setTimeout(() => setModerationWarning(null), 8000);
@@ -983,8 +992,8 @@ export const ChatRoomView: React.FC = () => {
                 });
               }
 
-              const imageAttachments = msgAttachments.filter(a => a.type.startsWith('image/'));
-              const otherAttachments = msgAttachments.filter(a => !a.type.startsWith('image/'));
+              const imageAttachments = msgAttachments.filter(a => isImageFile(a));
+              const otherAttachments = msgAttachments.filter(a => !isImageFile(a));
 
               return (
                 <div
@@ -1111,7 +1120,8 @@ export const ChatRoomView: React.FC = () => {
                               : 'grid-cols-2 sm:grid-cols-3'
                         }`}>
                           {imageAttachments.map((img, idx) => {
-                            const imgSrc = img.data || img.url;
+                            const viewUrl = img.url ? img.url.replace('/api/files/download/', '/api/files/view/') : '';
+                            const imgSrc = img.data || viewUrl || img.url;
                             const imgDownload = img.url || img.data;
                             return (
                             <div key={idx} className="relative group rounded-xl overflow-hidden bg-black/40 border border-white/10 shadow-sm">
@@ -1121,7 +1131,16 @@ export const ChatRoomView: React.FC = () => {
                                 loading="lazy"
                                 decoding="async"
                                 className={`w-full ${imageAttachments.length === 1 ? 'max-h-56 sm:max-h-64' : 'h-32 sm:h-36'} object-cover hover:opacity-95 transition-opacity cursor-pointer`}
-                                onClick={() => window.open(imgDownload, '_blank')}
+                                onClick={() => {
+                                  const targetUrl = viewUrl || imgDownload;
+                                  if (targetUrl) {
+                                    const a = document.createElement('a');
+                                    a.href = targetUrl;
+                                    a.target = '_blank';
+                                    a.rel = 'noreferrer';
+                                    a.click();
+                                  }
+                                }}
                               />
                               <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent p-2 flex items-center justify-between opacity-90 group-hover:opacity-100 transition-opacity">
                                 <span className="text-[11px] text-white truncate max-w-[130px] font-medium drop-shadow">
@@ -1229,15 +1248,17 @@ export const ChatRoomView: React.FC = () => {
             {/* Horizontal Scrollable Thumbnails */}
             <div className="flex items-center gap-3 overflow-x-auto pb-1 pt-0.5">
               {attachments.map((att, idx) => {
-                const isImg = att.type.startsWith('image/');
+                const isImg = isImageFile(att);
+                const viewUrl = att.url ? att.url.replace('/api/files/download/', '/api/files/view/') : '';
+                const displaySrc = att.data || viewUrl;
                 return (
                   <div 
                     key={idx} 
                     className="relative group shrink-0 w-20 h-20 rounded-xl overflow-hidden bg-slate-900 border border-emerald-500/40 shadow-md"
                   >
-                    {isImg ? (
+                    {isImg && displaySrc ? (
                       <img 
-                        src={att.data} 
+                        src={displaySrc} 
                         alt={att.name} 
                         className="w-full h-full object-cover"
                       />
@@ -1332,11 +1353,11 @@ export const ChatRoomView: React.FC = () => {
               className="hidden"
             />
             
-            {/* Hidden dedicated image input (multiple enabled) */}
+            {/* Hidden dedicated image input (supports phone photos, iPhone HEIC/HEIF, RAW) */}
             <input
               type="file"
               multiple
-              accept="image/*"
+              accept="image/*,.heic,.heif,.dng,.raw"
               ref={imageInputRef}
               onChange={(e) => e.target.files && processAndAttachFiles(e.target.files)}
               className="hidden"

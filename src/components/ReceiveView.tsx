@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { formatFileSize } from '../utils/device';
 import { playReceiveSound } from '../utils/sound';
+import { isImageFile } from '../utils/fileUpload';
 
 export const ReceiveView: React.FC = () => {
   const { currentUser, settings, updateSettings } = useAuth();
@@ -277,8 +278,9 @@ export const ReceiveView: React.FC = () => {
               const isCompleted = item.status === 'completed';
               const isDeclined = item.status === 'declined';
               const hasFile = !!(item.fileData || item.fileUrl);
-              const isImage = item.fileType?.startsWith('image/') && hasFile;
-              const imageSrc = item.fileData || item.fileUrl;
+              const isImage = (item.fileType?.startsWith('image/') || isImageFile({ name: item.fileName, type: item.fileType })) && hasFile;
+              const viewUrl = item.fileUrl ? item.fileUrl.replace('/api/files/download/', '/api/files/view/') : '';
+              const imageSrc = item.fileData || viewUrl || item.fileUrl;
 
               return (
                 <div

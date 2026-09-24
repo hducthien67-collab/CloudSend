@@ -43,6 +43,7 @@ import { censorProfanity } from '../utils/moderation';
 import { 
   uploadFileToServer, 
   generateImageThumbnail, 
+  isImageFile,
   MAX_FILE_SIZE, 
   MAX_FILE_SIZE_LABEL 
 } from '../utils/fileUpload';
@@ -148,10 +149,10 @@ export const SendView: React.FC = () => {
     setStatusMessage(null);
     setSelectedFile(file);
 
-    if (file.type.startsWith('image/')) {
+    if (isImageFile(file)) {
       try {
         const thumb = await generateImageThumbnail(file, 480, 0.75);
-        setFileBase64(thumb);
+        setFileBase64(thumb || null);
       } catch {
         setFileBase64(null);
       }
@@ -189,6 +190,7 @@ export const SendView: React.FC = () => {
 
     try {
       let fileUrl = '';
+      let serverThumbnail = '';
       if (mode === 'file' && selectedFile) {
         setUploadProgress(1);
         setStatusMessage(`Đang tải tệp "${selectedFile.name}" lên máy chủ...`);
@@ -197,6 +199,7 @@ export const SendView: React.FC = () => {
           setStatusMessage(`Đang tải tệp lên máy chủ (${pct}%)...`);
         });
         fileUrl = uploaded.url;
+        serverThumbnail = uploaded.thumbnail || '';
       }
 
       const payload: any = {
@@ -212,9 +215,9 @@ export const SendView: React.FC = () => {
       if (mode === 'file' && selectedFile) {
         payload.fileName = selectedFile.name;
         payload.fileSize = selectedFile.size;
-        payload.fileType = selectedFile.type || 'application/octet-stream';
+        payload.fileType = selectedFile.type || (isImageFile(selectedFile) ? 'image/jpeg' : 'application/octet-stream');
         payload.fileUrl = fileUrl;
-        payload.fileData = fileBase64 || '';
+        payload.fileData = serverThumbnail || fileBase64 || '';
       } else {
         payload.textContent = censorProfanity(textContent.trim()).cleanText;
       }
@@ -373,20 +376,29 @@ export const SendView: React.FC = () => {
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-left">
                   <div className="flex items-center gap-3.5 min-w-0 w-full sm:w-auto">
                     {/* Real Image thumbnail if it's an image */}
-                    {fileBase64 && selectedFile.type.startsWith('image/') ? (
+                    {isImageFile(selectedFile) ? (
                       <div 
-                        onClick={() => setViewingImage(fileBase64)}
-                        className="relative group/thumb cursor-pointer w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden border border-slate-700 bg-slate-900 shrink-0 shadow-md hover:ring-2 hover:ring-emerald-400 transition-all"
-                        title="Nhấn để xem ảnh phóng to"
+                        onClick={() => fileBase64 && setViewingImage(fileBase64)}
+                        className={`relative group/thumb ${fileBase64 ? 'cursor-pointer hover:ring-2 hover:ring-emerald-400' : 'cursor-default'} w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden border border-slate-700 bg-slate-900 shrink-0 shadow-md transition-all`}
+                        title={fileBase64 ? 'Nhấn để xem ảnh phóng to' : selectedFile.name}
                       >
-                        <img 
-                          src={fileBase64} 
-                          alt={selectedFile.name} 
-                          className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform"
-                        />
-                        <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center transition-opacity">
-                          <Eye className="w-4 h-4 text-white drop-shadow" />
-                        </div>
+                        {fileBase64 ? (
+                          <img 
+                            src={fileBase64} 
+                            alt={selectedFile.name} 
+                            className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center bg-slate-800 text-emerald-400 p-1 text-center">
+                            <ImageIcon className="w-6 h-6 mb-1" />
+                            <span className="text-[9px] text-slate-300">Ảnh camera</span>
+                          </div>
+                        )}
+                        {fileBase64 && (
+                          <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center transition-opacity">
+                            <Eye className="w-4 h-4 text-white drop-shadow" />
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="w-14 h-14 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
