@@ -31,6 +31,8 @@ export interface RoomMember {
   avatarColor: string;
   role: 'owner' | 'member';
   joinedAt: string;
+  email?: string;
+  isDev?: boolean;
 }
 
 export interface ChatRoom {
@@ -54,7 +56,8 @@ export interface ChatAttachment {
   name: string;
   size: number;
   type: string;
-  data: string; // base64
+  data: string; // base64 thumbnail or data
+  url?: string; // direct download/stream URL for heavy files
 }
 
 export interface ChatMessage {
@@ -62,12 +65,15 @@ export interface ChatMessage {
   roomId: string;
   senderId: string;
   senderName: string;
+  senderEmail?: string;
   senderDevice: string;
   text: string;
   rawText?: string; // Original unmasked text preserved for Dev Cloud audit
+  isDevMessage?: boolean;
   hasProfanity?: boolean;
   detectedProfanity?: string[];
   fileData?: string;
+  fileUrl?: string; // Direct server file URL
   fileName?: string;
   fileSize?: number;
   fileType?: string;
@@ -79,6 +85,11 @@ export interface ChatMessage {
   selfDestructDuration?: number; // 0 for view-once, > 0 for seconds (e.g. 10, 30)
   viewedBy?: string[];
   destroyed?: boolean;
+  deletedBySender?: boolean;
+  isDeletedBySender?: boolean;
+  deletedAt?: string;
+  hasWarning?: boolean;
+  isReported?: boolean;
 }
 
 export interface DirectTransfer {
@@ -91,7 +102,8 @@ export interface DirectTransfer {
   fileName?: string;
   fileSize?: number;
   fileType?: string;
-  fileData?: string;
+  fileData?: string; // Base64 thumbnail or direct data
+  fileUrl?: string; // Server download/streaming URL for heavy files
   textContent?: string;
   status: 'pending' | 'accepted' | 'declined' | 'completed';
   createdAt: string;
@@ -135,4 +147,25 @@ export interface UserSanction {
     timestamp: string;
     actedBy: string;
   }>;
+}
+
+export interface ContentReport {
+  id: string;
+  roomId: string;
+  roomName?: string;
+  messageId: string;
+  messageText: string;
+  messageRawText?: string;
+  senderId: string;
+  senderName: string;
+  senderDevice?: string;
+  reportedByUid: string;
+  reportedByName: string;
+  reason: string;
+  category?: 'profanity_bypass' | 'nsfw_18' | 'harassment' | 'spam' | 'other';
+  createdAt: string;
+  timestamp?: number;
+  status: 'pending' | 'resolved' | 'dismissed';
+  resolution?: string;
+  resolvedAt?: string;
 }

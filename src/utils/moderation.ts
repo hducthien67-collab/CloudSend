@@ -1,11 +1,10 @@
 // Moderation utility for text and image content
-// Enforces rules:
-// 1. Text: Censors profanity/vulgar words even when obfuscated with dots, spaces, dashes, symbols (e.g. f.u.c.k, d.i.t, v.l)
-// 2. Images: Blocks strong 18+ (sex / explicit pornography / heavy nudity) and extreme gore (severe bloodshed/mutilation)
-//    while allowing normal fictional horror / dark art / halloween style.
-
-// Common separator character set used for obfuscation (dots, spaces, dashes, underscores, symbols)
-const S = '[\\s._\\-*~#%^&@=,:/|\\\\()"\'>+<`!$?\\[\\]{}]*';
+// Policy update:
+// 1. Text: Only censors straight/direct profanity words (viết thẳng: địt, đụ, cặc, lồn, buồi, vcl, vl, đm, fuck, bitch, etc.).
+//    Obfuscations / evasions (lách luật qua dấu chấm, ký tự) are allowed to pass through so normal conversation is never blocked;
+//    community members can use the "Tố cáo" (Report) feature to flag bad actors for DEV review.
+// 2. Images: Relaxed client-side heuristics so normal photos/selfies are never blocked.
+//    Offensive pictures are handled via user reports in Dev DataStore.
 
 // Unicode word boundary for Vietnamese and English
 const B_START = '(?<=^|[^a-zA-Z0-9áàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬÉÈẺẼẸÊẾỀỂỄỆÍÌỈĨỊÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÚÙỦŨỤƯỨỪỬỮỰÝỲỶỸỴĐ])';
@@ -36,122 +35,101 @@ export const INNOCENT_PHRASES_LIST = [
   'hạ long', 'ha long', 'thăng long', 'thang long', 'long lanh', 'cầu lông', 'cau long',
   'edit', 'credit', 'audit', 'reddit', 'condition', 'edition', 'traditional', 'predict',
   'asset', 'assign', 'assist', 'class', 'pass', 'glass', 'grass', 'bass',
-  'cm', 'mm', 'dm', 'km', 'kg', 'ml', 'admin', 'welcome', 'đi tới', 'di toi', 'đi tiếp', 'di tiep'
+  'cm', 'mm', 'dm', 'km', 'kg', 'ml', 'admin', 'welcome', 'đi tới', 'di toi', 'đi tiếp', 'di tiep',
+  'đi tắm', 'di tam', 'đi tìm', 'di tim', 'đi thi', 'di thi', 'đi chơi', 'di choi'
 ];
 
-// Anti-obfuscation profanity regular expressions (catches real vulgar words, bypasses, leetspeak, dots, dashes)
-// Covers both with diacritics and without diacritics (cai lon, cailon, cac, buoi, dit, du, etc.)
-const ANTI_OBFUSCATION_PATTERNS: { name: string; regex: RegExp }[] = [
-  // English: FUCK (fuck, f.u.c.k, f u c k, f_u_c_k, f*u*c*k, fuk, f.u.k, phuck, f.u.c.k.i.n.g, motherfucker)
+// Straight/direct profanity regular expressions (catches real vulgar words written directly)
+// When users intentionally obfuscate (lách luật như f.u.c.k, d.i.t, v.l), they are ALLOWED to pass,
+// and the community can rely on user reporting (Tố cáo).
+const STRAIGHT_PROFANITY_PATTERNS: { name: string; regex: RegExp }[] = [
+  // English: FUCK (chỉ bắt viết thẳng: fuck, fucking, fucker, motherfucker, fucked)
   {
-    name: 'fuck/f.u.c.k',
-    regex: new RegExp(`${B_START}(?:m[o0]ther${S})?(?:f+|ph)${S}[uưúùụủũûü0v@]+h?${S}[ck]+h?(?:${S}[ck]+)?(?:${S}(?:ing|er|ed|in|s))?${B_END}`, 'gi')
+    name: 'fuck',
+    regex: new RegExp(`${B_START}(?:motherfuck(?:er|ing|s)?|fuck(?:ing|er|ed|s)?|fuk)${B_END}`, 'gi')
   },
-  // Vietnamese: ĐỊT / DIT (địt, dit, d.i.t, đ.ị.t, d i t, d_i_t, djt, dyt, ditme, d.i.t.m.e, dit con me, dit cu)
-  // Strictly bounded to avoid matching "edit", "credit", "audit", "đi tới", "đi tiếp"
+  // Vietnamese: ĐỊT / DIT (chỉ bắt viết thẳng: địt, địt mẹ, dit me, dit con me, dit cu, ditme)
   {
-    name: 'dit/d.i.t',
-    regex: new RegExp(`${B_START}(?:[đd]${S}[ịiíìĩỉjyy1!]+${S}[tct7]+(?:${S}(?:m[eẹ]|c[oụ]|b[aà]|con${S}m[eẹ]|m[aà]y|c[uụ]|nh[aà]))?|[đd]\\.[iị]\\.[tct]|djt|dyt|ditme|d\\.i\\.t\\.m\\.e)${B_END}`, 'gi')
+    name: 'dit',
+    regex: new RegExp(`${B_START}(?:địt(?:\\s+(?:mẹ|con\\s+mẹ|cụ|mày|nhà\\s+mày))?|dit(?:\\s+(?:me|con\\s+me|cu|may))?|ditme)${B_END}`, 'gi')
   },
-  // Vietnamese: ĐỤ / DU (đụ, đ.ụ, đ ụ, đụ má, đụ mẹ, du ma, duma, dume, đ.ụ.m.á)
-  // Protected against innocent words like "du lịch", "dù sao", "ví dụ", "mặc dù" via exact span checking
+  // Vietnamese: ĐỤ / DU (chỉ bắt viết thẳng: đụ, đụ má, đụ mẹ, duma, dume, du ma)
   {
-    name: 'du/đ.ụ',
-    regex: new RegExp(`${B_START}(?:đ${S}ụ|[đd]${S}[uụúùủũ]+${S}(?:m[aáàạảã]+|m[eẹ]|m[oóò]a|b[aà]|c[oụ])|[đd]\\.[uụ]\\.m\\.[aá]|[đd]\\.[uụ])${B_END}`, 'gi')
+    name: 'du',
+    regex: new RegExp(`${B_START}(?:đụ(?:\\s+(?:má|mẹ|móa|bà|cả\\s+lò))?|duma|dume|du\\s+ma)${B_END}`, 'gi')
   },
-  // Vietnamese: ĐM / DKM / DCM / CMM / DMM (đm, dm, đ.m, d.m, dkm, đkm, d.k.m, dcm, đcm, đmm, dmm)
+  // Vietnamese: ĐM / DKM / DCM / CMM / DMM (chỉ bắt viết thẳng)
   {
-    name: 'dm/d.m/dkm',
-    regex: new RegExp(`${B_START}(?:[đd]${S}[kKcChH]${S}[mM]|[đd]${S}[mM]{1,3}|[đd]\\.[mM]|d\\.[kK]\\.[mM]|[cC]${S}[mM]{2,3}|[cC]${S}[mM]${S}[nN](?:${S}[rR])?)${B_END}`, 'gi')
+    name: 'dm/dkm',
+    regex: new RegExp(`${B_START}(?:đm|dkm|đkm|dcm|đcm|đmm|dmm|cmm)${B_END}`, 'gi')
   },
-  // Vietnamese: VL / VCL / VKL / VCC / VLON (vl, v.l, vcl, v.c.l, vkl, v.k.l, vcc, vlon)
+  // Vietnamese: VL / VCL / VKL / VCC / VLON (chỉ bắt viết thẳng)
   {
-    name: 'vl/v.l/vcl',
-    regex: new RegExp(`${B_START}(?:v${S}[ck]${S}[lL]|v${S}[ck]${S}[ck]|v${S}l(?:${S}[oồô0]${S}n)|v\\.[ck]\\.[lL]|v\\.[lL])${B_END}`, 'gi')
+    name: 'vl/vcl',
+    regex: new RegExp(`${B_START}(?:vcl|vkl|vcc|vlon|vl)${B_END}`, 'gi')
   },
-  // Vietnamese: LỒN / LON / CAI LON (lồn, l.o.n, l.ồ.n, l o n, cailon, cái lồn, cái lon, cai lon, con lon, con lồn, ăn lồn, bú lồn, hãm lồn, nứng lồn)
-  // Catches all profanity while protecting legitimate beverage cans (lon nước, lon bia, 1 lon, etc.) via exact innocent span checking!
+  // Vietnamese: LỒN / CAI LON (viết thẳng: lồn, cái lồn, con lồn, ăn lồn, bú lồn, cailon)
   {
-    name: 'lon/l.o.n',
-    regex: new RegExp(`${B_START}(?:(?:c[aáàạảã]i${S}|con${S})l${S}[oồốổỗộ0]+${S}n|(?:[aăắằẳẵặáàảãạ]n|b[uúùủũụ]|h[aáàạảã]m|m[aăặắằẳẵạáà]t|x[aáàạảã]m|r[aáàạảã]ch|n[uứừửữựúùủũụ]ng|đ[uụúùủũ]|du)${S}l${S}[oồốổỗộ0]+${S}n|l${S}[oồốổỗộ0]+${S}n${S}(?:m[eẹ]|m[aà]y|t[oọóò]|qu[eéèẹẻẽ]|bu[ồo]i|[ck][aặ]c)|l\\.o\\.n|l\\.ồ\\.n|l[ồốổỗộ0]+n|lon)${B_END}`, 'gi')
+    name: 'lon',
+    regex: new RegExp(`${B_START}(?:(?:cái\\s+|con\\s+|cai\\s+)?lồn|(?:ăn|bú|hãm|nứng)\\s+lồn|cailon|lồn\\s+(?:mẹ|mày|to|què|buồi|cặc))${B_END}`, 'gi')
   },
-  // Vietnamese: CẶC / CAC / KẶC (cặc, kặc, c.ặ.c, c.a.c, cái cặc, cái cac, con cặc, con cac, ăn cặc, bú cặc, như cặc, đầu cặc)
-  // Protected against innocent words like "các bạn", "các anh", "các file" via exact innocent span checking
+  // Vietnamese: CẶC / KẶC (viết thẳng: cặc, kặc, cái cặc, con cặc, ăn cặc, bú cặc, như cặc, đầu cặc)
   {
-    name: 'cac/c.a.c',
-    regex: new RegExp(`${B_START}(?:(?:c[aáàạảã]i${S}|con${S})[ck]${S}[aăặậ4@]+${S}[ckct]+|(?:[aăắằẳẵặáàảãạ]n|b[uúùủũụ]|nh[uưúùủũụ]|đ[aâầấẩẫậ]u)${S}[ck]${S}[aăặậ4@]+${S}[ckct]+|[ck]${S}[aăặ]+${S}[ck]+${S}(?:bu[ồo]i|l[oồ]n|m[eẹ]|m[aà]y)|c\\.ặ\\.c|c\\.a\\.c|[ck][ặậ]c)${B_END}`, 'gi')
+    name: 'cac',
+    regex: new RegExp(`${B_START}(?:(?:cái\\s+|con\\s+|cai\\s+)?(?:cặc|kặc)|(?:ăn|bú|như|đầu)\\s+(?:cặc|kặc)|(?:cặc|kặc)\\s+(?:buồi|lồn|mẹ|mày))${B_END}`, 'gi')
   },
-  // Vietnamese: BUỒI / BUOI (buồi, buoi, b.u.ồ.i, b.u.o.i, con buồi, con buoi, cái buồi, cái buoi, đầu buồi, dau buoi, như buồi, nhu buoi, ăn buồi)
-  // Protected against innocent words like "buổi sáng", "buổi trưa", "trái bưởi" via exact innocent span checking
+  // Vietnamese: BUỒI / BUOI (viết thẳng: buồi, con buồi, cái buồi, đầu buồi, như buồi, ăn buồi)
   {
-    name: 'buoi/b.u.o.i',
-    regex: new RegExp(`${B_START}(?:(?:c[aáàạảã]i${S}|con${S}|đ[aâầấẩẫậ]u|nh[uưúùủũụ]|[aăắằẳẵặáàảãạ]n)${S}b${S}[uưúùủũ]+${S}[oồốộ0]+${S}[iịíìĩỉy]+|b${S}[uưúùủũ]+${S}[ồốộ]+${S}[iịíìĩỉy]+|b\\.u\\.ồ\\.i|b\\.u\\.o\\.i|bu[ồo]i${S}[ck][aặ]c)${B_END}`, 'gi')
+    name: 'buoi',
+    regex: new RegExp(`${B_START}(?:(?:cái\\s+|con\\s+|đầu\\s+|như\\s+|ăn\\s+)?buồi|buồi\\s+cặc)${B_END}`, 'gi')
   },
-  // Vietnamese: CU / BÚ CU / CON CU (bú cu, bu cu, con cu, cái cu, liếm cu, bóp cu, sóc cu)
+  // Vietnamese: CU / BÚ CU (bú cu, liếm cu, bóp cu, sóc cu)
   {
-    name: 'cu/bucu',
-    regex: new RegExp(`${B_START}(?:(?:b[uúùủũụ]|li[eêéèẹẻẽ]m|b[oóòỏõọ]p|s[oóòỏõọ]c)${S}(?:con${S}|c[aáàạảã]i${S})?c${S}[uưúùủũ]+|(?:con|c[aáàạảã]i)${S}c${S}[uưúùủũ]+|c\\.u)${B_END}`, 'gi')
+    name: 'bucu',
+    regex: new RegExp(`${B_START}(?:(?:bú|liếm|bóp|sóc)\\s+cu)${B_END}`, 'gi')
   },
-  // Vietnamese: ĐÉO / DEO (đéo, đ.é.o, đ e o, del, đel, đ.e.o)
+  // Vietnamese: ĐÉO / DEO (viết thẳng: đéo, đéo mẹ, đéo cần, đéo biết)
   {
-    name: 'deo/đ.é.o',
-    regex: new RegExp(`${B_START}(?:[đd]${S}[éẹ3]+${S}[oóòỏõọ0]+|[đd]${S}[eéèẻẽẹ3]+${S}l+|đ\\.[ée]\\.[oó]|d\\.e\\.o)${B_END}`, 'gi')
+    name: 'deo',
+    regex: new RegExp(`${B_START}(?:đéo(?:\\s+(?:mẹ|cần|biết|quan\\s+tâm|thích))?)${B_END}`, 'gi')
   },
-  // Vietnamese: CHỊCH (chịch, c.h.i.c.h, chich)
+  // Vietnamese: CHỊCH (chỉ bắt viết thẳng)
   {
-    name: 'chich/c.h.i.c.h',
-    regex: new RegExp(`${B_START}(?:ch${S}[iịíìĩỉj]+${S}ch|c\\.h\\.i\\.c\\.h)${B_END}`, 'gi')
+    name: 'chich',
+    regex: new RegExp(`${B_START}(?:chịch)${B_END}`, 'gi')
   },
-  // English: SEX / SEXX (sex, s.e.x, s e x, s_e_x, s*e*x, s3x)
+  // English: SEX / PORN (chỉ bắt viết thẳng)
   {
-    name: 'sex/s.e.x',
-    regex: new RegExp(`${B_START}[s$]${S}[eéèẻẽẹ3]+${S}x+${B_END}`, 'gi')
+    name: 'sex/porn',
+    regex: new RegExp(`${B_START}(?:sex|porn(?:o)?)${B_END}`, 'gi')
   },
-  // English: PORN / PORNO (porn, p.o.r.n, p o r n, p0rn, p_o_r_n, porno)
+  // English: BITCH / CUNT / ASSHOLE
   {
-    name: 'porn/p.o.r.n',
-    regex: new RegExp(`${B_START}p${S}[oóòỏõọôồố0]+${S}r+${S}n+(?:${S}[o0])?${B_END}`, 'gi')
-  },
-  // English: BITCH (bitch, b.i.t.c.h, b i t c h, b!tch, bitches)
-  {
-    name: 'bitch/b.i.t.c.h',
-    regex: new RegExp(`${B_START}b${S}[iịíìĩỉ1!]+${S}t+${S}c+${S}h+(?:${S}es)?${B_END}`, 'gi')
-  },
-  // English: ASSHOLE / ASS (asshole, a.s.s.h.o.l.e, a$$hole)
-  // Strictly bounded so it never matches "pass", "class", "glass", "asset", "assign"
-  {
-    name: 'asshole/a.s.s',
-    regex: new RegExp(`${B_START}(?:a${S}[s$]{2}${S}h${S}[o0]${S}l${S}e|a\\.[s$]\\.[s$]|dumbass|jackass)${B_END}`, 'gi')
+    name: 'bitch/asshole',
+    regex: new RegExp(`${B_START}(?:bitch(?:es)?|cunt(?:s)?|asshole(?:s)?|dumbass|jackass)${B_END}`, 'gi')
   },
   // English: DICK / PUSSY / HENTAI
   {
-    name: 'dick/d.i.c.k',
-    regex: new RegExp(`${B_START}d${S}[i1!]+${S}[ck]+h?(?:${S}[kc])?${B_END}`, 'gi')
+    name: 'dick/pussy',
+    regex: new RegExp(`${B_START}(?:dick(?:s)?|pussy|hentai)${B_END}`, 'gi')
   },
+  // English: WHORE / SLUT / BASTARD
   {
-    name: 'pussy/p.u.s.s.y',
-    regex: new RegExp(`${B_START}p${S}[u0v]+${S}[s$]{2,4}${S}y${B_END}`, 'gi')
-  },
-  {
-    name: 'hentai/h.e.n.t.a.i',
-    regex: new RegExp(`${B_START}h${S}[e3]+${S}n+${S}t+${S}[a4@]+${S}[i1!y]+${B_END}`, 'gi')
-  },
-  // English: WHORE / SLUT / CUNT / BASTARD
-  {
-    name: 'whore/slut/cunt',
-    regex: new RegExp(`${B_START}(?:wh${S}[o0]+${S}r+${S}[e3]+|sl${S}[u0v]+${S}t+|c${S}[u0v]+${S}n+${S}t+|b${S}[a4@]+${S}s+${S}t+${S}[a4@]+${S}r+${S}d+)${B_END}`, 'gi')
+    name: 'whore/slut',
+    regex: new RegExp(`${B_START}(?:whore(?:s)?|slut(?:s)?|bastard(?:s)?)${B_END}`, 'gi')
   },
   // Vietnamese sexually explicit & vulgar phrases
   {
-    name: 'damduc/thudam/nung',
-    regex: new RegExp(`${B_START}(?:d[aâ]m${S}d[uụ]c|th[uủ]${S}d[aâ]m|s[oóòỏõọ]c${S}l[oọóò]|n[uứ]ng${S}(?:l[oồ]n|c[aặ]c)|ch[oó]${S}[đd][eẻ]|ch[oó]${S}ch[eế]t|m[eẹ]${S}m[aà]y|b[aá]n${S}d[aâ]m|g[aá]i${S}g[oọ]i)${B_END}`, 'gi')
+    name: 'vulgar_phrases',
+    regex: new RegExp(`${B_START}(?:dâm\\s+dục|thủ\\s+dâm|sóc\\s+lọ|nứng\\s+(?:lồn|cặc)|chó\\s+đẻ|chó\\s+chết|mẹ\\s+mày|bán\\s+dâm|gái\\s+gọi)${B_END}`, 'gi')
   }
 ];
 
 /**
- * Filter text and replace any vulgar words with asterisks (***),
- * completely defeating bypass attempts like f.u.c.k, d.i.t, v.l, s.e.x, cai lon,
+ * Filter text and replace only straight/direct vulgar words with asterisks (***),
  * while safely protecting verified innocent phrases like "lon nước", "lon bia", "ví dụ", "vui lòng", "các bạn", "buổi sáng".
+ * Obfuscated bypasses (lách luật) are preserved so natural conversation isn't broken;
+ * they are handled via community reporting (Tố cáo).
  */
 export function censorProfanity(text: string): { cleanText: string; hasProfanity: boolean; matchCount: number; detectedList: string[] } {
   if (!text) return { cleanText: '', hasProfanity: false, matchCount: 0, detectedList: [] };
@@ -179,7 +157,7 @@ export function censorProfanity(text: string): { cleanText: string; hasProfanity
   let matchCount = 0;
   const detectedList: string[] = [];
 
-  for (const item of ANTI_OBFUSCATION_PATTERNS) {
+  for (const item of STRAIGHT_PROFANITY_PATTERNS) {
     const rx = new RegExp(item.regex.source, item.regex.flags);
     clean = clean.replace(rx, (match, offset) => {
       const trimmed = match.trim();
@@ -192,7 +170,7 @@ export function censorProfanity(text: string): { cleanText: string; hasProfanity
       }
 
       // Check if this match is strictly part of an innocent phrase
-      // (e.g. "lon" in "lon nước" is protected, but "cai lon" or "đụ má" in "ví dụ cai lon" is NOT, and is CENSORED!)
+      // (e.g. "lon" in "lon nước" is protected, but "cái lồn" is CENSORED!)
       const matchStart = offset;
       const matchEnd = offset + match.length;
       if (isInsideInnocent(matchStart, matchEnd)) {
@@ -335,148 +313,25 @@ export interface ImageModerationResult {
 }
 
 /**
- * Perform rapid client-side computer vision heuristic scanning on image data URL:
- * - Detects strong 18+ nudity/sex via skin-tone density and distribution in YCbCr/RGB
- * - Detects severe gore / arterial bloodshed pools (without blocking normal horror / dark art / halloween)
+ * Perform rapid client-side check on uploaded images.
+ * Avoids aggressive false-positive pixel color purging on normal selfies / portraits.
+ * Extreme cases or bad actors are reported by users via the "Tố cáo" (Report) feature.
  */
 export async function scanImageHeuristics(dataUrl: string, fileName = ''): Promise<ImageModerationResult> {
-  // Check suspicious filenames first
+  // Check clearly explicit 18+ filenames (e.g. porn.mp4, xxx.png, hentai.jpg)
   const lowerName = fileName.toLowerCase();
-  const blockedKeywords = [
-    'porn', 'hentai', 'nsfw', 'sex', 'xxx', 'nude', 'jav', 'erotic', 'gore_extreme',
-    '18+', '18plus', 'nudity', 'boobs', 'vagina', 'penis', 'cleavage', 'lon', 'buoi',
-    'cac', 'khoathan', 'khoa_than', 'dam_duc', 'sexy_hot', 'onlyfans', 'strip',
-    'bikini_hot', 'adult', 'sex_toy', 'uncensored', 'clit', 'co_be', 'khe_nguc', 'anh_nong'
-  ];
-  for (const kw of blockedKeywords) {
-    if (lowerName.includes(kw)) {
-      return {
-        safe: false,
-        reason: 'Ảnh đã tự động bị hủy và xóa khỏi danh sách gửi do tên tệp chứa từ khóa 18+ hoặc nội dung nhạy cảm.',
-        category: 'nsfw_sex'
-      };
-    }
+  const explicitKeywordRegex = /(?:^|[._\-\s])(?:porn|hentai|xxx|sex_video|khoa_than|nude_photo|dam_duc)(?:[._\-\s]|$)/i;
+  
+  if (explicitKeywordRegex.test(lowerName)) {
+    return {
+      safe: false,
+      reason: 'Tệp đã bị từ chối do tên tệp chứa từ khóa khiêu dâm 18+ rõ ràng.',
+      category: 'nsfw_sex'
+    };
   }
 
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        const SAMPLE_SIZE = 100; // 100x100 downsampled grid (10,000 pixels) for instant analysis
-        canvas.width = SAMPLE_SIZE;
-        canvas.height = SAMPLE_SIZE;
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-        if (!ctx) {
-          resolve({ safe: true, category: 'clean' });
-          return;
-        }
-
-        ctx.drawImage(img, 0, 0, SAMPLE_SIZE, SAMPLE_SIZE);
-        const imageData = ctx.getImageData(0, 0, SAMPLE_SIZE, SAMPLE_SIZE);
-        const data = imageData.data;
-        const totalPixels = SAMPLE_SIZE * SAMPLE_SIZE;
-
-        let skinPixelCount = 0;
-        let centralSkinCount = 0;
-        let extremeBloodCount = 0;
-
-        for (let y = 0; y < SAMPLE_SIZE; y++) {
-          for (let x = 0; x < SAMPLE_SIZE; x++) {
-            const idx = (y * SAMPLE_SIZE + x) * 4;
-            const r = data[idx];
-            const g = data[idx + 1];
-            const b = data[idx + 2];
-            const a = data[idx + 3];
-
-            if (a < 50) continue; // skip transparent pixels
-
-            // YCbCr skin tone transformation
-            const yVal = 0.299 * r + 0.587 * g + 0.114 * b;
-            const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
-            const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
-
-            // Skin color condition (real human skin + bright/anime tones)
-            const isStandardSkin = (
-              r > 85 && g > 35 && b > 20 &&
-              Math.max(r, g, b) - Math.min(r, g, b) > 12 &&
-              Math.abs(r - g) > 10 &&
-              r > g && r > b &&
-              cb >= 75 && cb <= 135 &&
-              cr >= 128 && cr <= 185 &&
-              yVal > 65
-            );
-
-            const isFairSkin = (
-              r > 185 && g > 130 && b > 105 &&
-              r > g && g >= b &&
-              (r - b) > 20 &&
-              (r - g) < 80
-            );
-
-            const isSkin = isStandardSkin || isFairSkin;
-
-            if (isSkin) {
-              skinPixelCount++;
-              // Check if inside central 60% of frame (typical focus of explicit photos)
-              if (x >= 20 && x <= 80 && y >= 20 && y <= 80) {
-                centralSkinCount++;
-              }
-            }
-
-            // Extreme bloodshed / active arterial gore condition:
-            // Very bright vivid arterial red pool (R > 175, G < 45, B < 45)
-            // (Normal horror with dark shadows, desaturated zombies, or orange halloween lighting is NOT flagged)
-            const isExtremeGoreRed = (
-              r > 175 && g < 45 && b < 45 && (r / (g + b + 1) > 2.8)
-            );
-
-            if (isExtremeGoreRed) {
-              extremeBloodCount++;
-            }
-          }
-        }
-
-        const skinRatio = skinPixelCount / totalPixels;
-        const centralRatio = centralSkinCount / (60 * 60);
-        const goreRatio = extremeBloodCount / totalPixels;
-
-        // Condition 1: High skin ratio indicating heavy nudity / sex / 18+
-        if (skinRatio > 0.38 || (skinRatio > 0.25 && centralRatio > 0.38) || centralRatio > 0.48) {
-          resolve({
-            safe: false,
-            reason: 'Ảnh đã tự động bị hủy và xóa khỏi danh sách gửi vì phát hiện nội dung nhạy cảm 18+ (khỏa thân / khiêu dâm).',
-            category: 'nsfw_sex'
-          });
-          return;
-        }
-
-        // Condition 2: Extreme visceral gore / heavy fresh bloodshed (> 28% of entire frame)
-        if (goreRatio > 0.28) {
-          resolve({
-            safe: false,
-            reason: 'Ảnh đã tự động bị hủy và xóa khỏi danh sách gửi vì có yếu tố bạo lực máu me kinh dị quá mức.',
-            category: 'extreme_gore'
-          });
-          return;
-        }
-
-        resolve({ safe: true, category: 'clean' });
-      } catch (err) {
-        console.warn('Scan heuristics notice:', err);
-        resolve({ safe: true, category: 'clean' });
-      }
-    };
-
-    img.onerror = () => {
-      resolve({ safe: true, category: 'clean' });
-    };
-
-    img.src = dataUrl;
-  });
+  // Allow normal images, portraits, and photos to pass through smoothly without blocking users
+  return { safe: true, category: 'clean' };
 }
 
 /**

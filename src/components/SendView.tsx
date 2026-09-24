@@ -40,6 +40,12 @@ import {
 import { formatFileSize } from '../utils/device';
 import { playSendSound } from '../utils/sound';
 import { censorProfanity } from '../utils/moderation';
+import { 
+  uploadFileToServer, 
+  generateImageThumbnail, 
+  MAX_FILE_SIZE, 
+  MAX_FILE_SIZE_LABEL 
+} from '../utils/fileUpload';
 
 export const SendView: React.FC = () => {
   const { currentUser, userProfile, settings } = useAuth();
@@ -50,6 +56,7 @@ export const SendView: React.FC = () => {
   // File state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileBase64, setFileBase64] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Text state
@@ -132,22 +139,25 @@ export const SendView: React.FC = () => {
   }, [currentUser]);
 
   // Handle file selection
-  const handleFileChange = (file: File) => {
-    // 750KB limit for direct instant relay through Firestore document
-    const MAX_SIZE = 750 * 1024;
-    if (file.size > MAX_SIZE) {
-      setStatusMessage(`Tệp "${file.name}" (${formatFileSize(file.size)}) vượt quá giới hạn 750KB truyền tức thời. Vui lòng chọn tệp nhỏ hơn.`);
+  const handleFileChange = async (file: File) => {
+    if (file.size > MAX_FILE_SIZE) {
+      setStatusMessage(`Tệp "${file.name}" (${formatFileSize(file.size)}) vượt quá giới hạn tối đa ${MAX_FILE_SIZE_LABEL}. Vui lòng chọn tệp nhỏ hơn.`);
       return;
     }
 
     setStatusMessage(null);
     setSelectedFile(file);
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setFileBase64(e.target?.result as string);
-    };
-    reader.readAsDataURL(file);
+    if (file.type.startsWith('image/')) {
+      try {
+        const thumb = await generateImageThumbnail(file, 480, 0.75);
+        setFileBase64(thumb);
+      } catch {
+        setFileBase64(null);
+      }
+    } else {
+      setFileBase64(null);
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -164,7 +174,7 @@ export const SendView: React.FC = () => {
   // Perform send to target device
   const sendToPeer = async (target: PresenceDevice) => {
     if (!currentUser) return;
-    if (mode === 'file' && (!selectedFile || !fileBase64)) {
+    if (mode === 'file' && !selectedFile) {
       setStatusMessage('Vui lòng chọn hoặc kéo thả tệp tin cần gửi trước.');
       return;
     }
@@ -178,6 +188,17 @@ export const SendView: React.FC = () => {
     setStatusMessage(null);
 
     try {
+      let fileUrl = '';
+      if (mode === 'file' && selectedFile) {
+        setUploadProgress(1);
+        setStatusMessage(`Đang tải tệp "${selectedFile.name}" lên máy chủ...`);
+        const uploaded = await uploadFileToServer(selectedFile, (pct) => {
+          setUploadProgress(pct);
+          setStatusMessage(`Đang tải tệp lên máy chủ (${pct}%)...`);
+        });
+        fileUrl = uploaded.url;
+      }
+
       const payload: any = {
         senderId: currentUser.uid,
         senderName: userProfile?.displayName || currentUser.displayName || 'Người dùng',
@@ -188,11 +209,12 @@ export const SendView: React.FC = () => {
         createdAt: new Date().toISOString(),
       };
 
-      if (mode === 'file' && selectedFile && fileBase64) {
+      if (mode === 'file' && selectedFile) {
         payload.fileName = selectedFile.name;
         payload.fileSize = selectedFile.size;
         payload.fileType = selectedFile.type || 'application/octet-stream';
-        payload.fileData = fileBase64;
+        payload.fileUrl = fileUrl;
+        payload.fileData = fileBase64 || '';
       } else {
         payload.textContent = censorProfanity(textContent.trim()).cleanText;
       }
@@ -204,11 +226,12 @@ export const SendView: React.FC = () => {
       }
 
       setTransferStatus(prev => ({ ...prev, [target.uid]: 'success' }));
-      setStatusMessage(`Đã chuyển thành công đến ${target.deviceName}!`);
+      setStatusMessage(`Đã chuyển thành công "${selectedFile?.name || 'nội dung'}" đến ${target.deviceName}!`);
 
       // Clear/Reset selection when sent successfully as requested by user
       setSelectedFile(null);
       setFileBase64(null);
+      setUploadProgress(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -220,11 +243,12 @@ export const SendView: React.FC = () => {
         setTransferStatus(prev => ({ ...prev, [target.uid]: 'idle' }));
         setSendingTargetId(null);
       }, 3000);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Send error:', error);
       setTransferStatus(prev => ({ ...prev, [target.uid]: 'error' }));
-      setStatusMessage('Lỗi khi gửi tệp qua server trung gian. Vui lòng thử lại.');
+      setStatusMessage(error?.message || 'Lỗi khi tải hoặc gửi tệp tin. Vui lòng thử lại.');
       setSendingTargetId(null);
+      setUploadProgress(null);
     }
   };
 
@@ -422,12 +446,31 @@ export const SendView: React.FC = () => {
                       Kéo thả tệp tin hoặc ảnh vào đây hoặc nhấn để duyệt
                     </span>
                     <span className="text-xs text-slate-400">
-                      Hỗ trợ hình ảnh, tài liệu, video ngắn (tối ưu tới 750KB để chuyển tức thời qua Relay)
+                      Hỗ trợ tệp tin dung lượng lớn lên tới 250MB (video HD, ảnh chất lượng gốc, tài liệu PDF, ZIP, APK, phần mềm...)
                     </span>
                   </div>
                 </div>
               )}
             </div>
+
+            {/* Upload Progress Bar */}
+            {uploadProgress !== null && (
+              <div className="mt-3 p-3 bg-slate-900/90 border border-emerald-500/40 rounded-xl space-y-1.5 shadow-lg animate-fadeIn">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-emerald-400 font-semibold flex items-center gap-1.5">
+                    <UploadCloud className="w-3.5 h-3.5 animate-bounce" />
+                    Đang tải tệp lên máy chủ...
+                  </span>
+                  <span className="text-white font-mono font-bold">{uploadProgress}%</span>
+                </div>
+                <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-200 rounded-full"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div>

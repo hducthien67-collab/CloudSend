@@ -21,12 +21,14 @@ import {
   Globe
 } from 'lucide-react';
 import { AVATAR_COLORS } from '../utils/device';
+import { isDevUser } from '../utils/devModeration';
 
 interface RoomDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   room: ChatRoom;
   currentUserUid: string;
+  currentUserEmail?: string;
   currentUserName: string;
   currentDeviceName: string;
   messages: ChatMessage[];
@@ -39,6 +41,7 @@ export const RoomDetailsModal: React.FC<RoomDetailsModalProps> = ({
   onClose,
   room,
   currentUserUid,
+  currentUserEmail,
   currentUserName,
   currentDeviceName,
   messages,
@@ -486,28 +489,41 @@ export const RoomDetailsModal: React.FC<RoomDetailsModalProps> = ({
 
                 <div className="space-y-2">
                   {membersList.map((m, idx) => {
-                    const isRoomOwner = m.role === 'owner' || m.uid === room.ownerId || m.uid === room.createdBy;
                     const isSelf = m.uid === currentUserUid;
+                    const isMemberDev = m.isDev || isDevUser(m.email) || (isSelf && isDevUser(currentUserEmail)) || (m.displayName && m.displayName.includes('DEV'));
+                    const isRoomOwner = m.role === 'owner' || m.uid === room.ownerId || m.uid === room.createdBy;
 
                     return (
                       <div
                         key={m.uid || idx}
                         className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between ${
-                          isRoomOwner
+                          isMemberDev
+                            ? 'bg-gradient-to-r from-emerald-950/60 via-slate-900 to-amber-950/40 border-amber-500/50 shadow-md shadow-amber-950/20 ring-1 ring-amber-500/30'
+                            : isRoomOwner
                             ? 'bg-amber-500/10 border-amber-500/30 text-white'
                             : 'bg-slate-950/50 border-slate-800 text-slate-300'
                         }`}
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           <div 
-                            className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0 border border-white/10"
-                            style={{ backgroundColor: m.avatarColor || '#3b82f6' }}
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0 border relative ${
+                              isMemberDev ? 'border-amber-400 shadow-sm shadow-amber-500/30 ring-2 ring-amber-400/40 bg-emerald-900' : 'border-white/10'
+                            }`}
+                            style={isMemberDev ? undefined : { backgroundColor: m.avatarColor || '#3b82f6' }}
                           >
-                            {m.displayName ? m.displayName.charAt(0).toUpperCase() : 'U'}
+                            {isMemberDev ? (
+                              <Crown className="w-5 h-5 text-amber-300 fill-amber-300" />
+                            ) : (
+                              m.displayName ? m.displayName.charAt(0).toUpperCase() : 'U'
+                            )}
                           </div>
                           <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-sm truncate text-white">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`font-semibold text-sm truncate ${
+                                isMemberDev 
+                                  ? 'font-extrabold bg-gradient-to-r from-amber-300 via-emerald-300 to-teal-300 bg-clip-text text-transparent' 
+                                  : 'text-white'
+                              }`}>
                                 {m.displayName}
                               </span>
                               {isSelf && (
@@ -515,29 +531,39 @@ export const RoomDetailsModal: React.FC<RoomDetailsModalProps> = ({
                                   Bạn
                                 </span>
                               )}
-                              {isRoomOwner && (
+                              {isMemberDev && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500/25 to-emerald-500/25 text-amber-300 border border-amber-500/40 shadow-sm">
+                                  <Crown className="w-3 h-3 text-amber-400 fill-amber-400" />
+                                  👑 DEV CHÍNH CHỦ
+                                </span>
+                              )}
+                              {isRoomOwner && !isMemberDev && (
                                 <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
                                   <Crown className="w-3 h-3 text-amber-400" />
                                   Trưởng phòng
                                 </span>
                               )}
-                              {!isRoomOwner && (
+                              {!isRoomOwner && !isMemberDev && (
                                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400">
                                   Thành viên
                                 </span>
                               )}
                             </div>
                             <p className="text-xs text-slate-400 truncate mt-0.5">
-                              Thiết bị: {m.deviceName || 'Trực tuyến'}
+                              {isMemberDev ? 'Quản trị viên tối cao hệ thống CloudSend' : `Thiết bị: ${m.deviceName || 'Trực tuyến'}`}
                             </p>
                           </div>
                         </div>
 
-                        {isRoomOwner && (
+                        {isMemberDev ? (
+                          <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30" title="Nhà phát triển chính thức">
+                            <Crown className="w-4 h-4 fill-amber-400" />
+                          </div>
+                        ) : isRoomOwner ? (
                           <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400">
                             <ShieldCheck className="w-4 h-4" />
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     );
                   })}

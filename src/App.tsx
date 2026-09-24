@@ -161,19 +161,6 @@ function MainApp() {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // === PRIORITY ROUTE: TRANG WEB DATASTORE DEV CLOUD ===
-  // Must render directly without forcing user chat login!
-  if (isDatastorePage) {
-    return (
-      <DevDatastorePage
-        onBackToApp={() => {
-          window.history.pushState(null, '', '/');
-          setIsDatastorePage(false);
-        }}
-      />
-    );
-  }
-
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 text-white">
@@ -185,6 +172,52 @@ function MainApp() {
           <span>Đang kết nối Firebase Relay...</span>
         </div>
       </div>
+    );
+  }
+
+  // === ROUTE: TRANG WEB DATASTORE DEV CLOUD (YÊU CẦU ĐĂNG NHẬP VÀ XÁC THỰC QUYỀN DEV CHÍNH CHỦ) ===
+  if (isDatastorePage) {
+    // 1. Chưa đăng nhập -> Buộc phải đăng nhập trước
+    if (!currentUser) {
+      return <AuthModal />;
+    }
+
+    // 2. Đã đăng nhập nhưng KHÔNG PHẢI tài khoản DEV (hducthien67@gmail.com) -> Chặn truy cập 403
+    if (!isDevUser(currentUser.email)) {
+      return (
+        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-slate-100 selection:bg-rose-500 selection:text-white">
+          <div className="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-400 flex items-center justify-center mb-4 shadow-lg shadow-rose-500/10">
+            <ShieldAlert className="w-8 h-8" />
+          </div>
+          <h1 className="text-xl font-bold text-white mb-2">403 - Quyền Truy Cập Bị Từ Chối</h1>
+          <p className="text-sm text-slate-400 max-w-md mb-2">
+            Trang Quản Trị & DataStore chỉ dành riêng cho tài khoản Nhà phát triển chính thức (<span className="text-emerald-400 font-mono font-semibold">hducthien67@gmail.com</span>).
+          </p>
+          <p className="text-xs text-rose-300 font-mono bg-rose-500/10 px-3 py-1.5 rounded-lg border border-rose-500/20 mb-6">
+            Tài khoản hiện tại của bạn ({currentUser.email || 'Khách'}) không có quyền truy cập chức năng này.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              window.history.pushState(null, '', '/');
+              setIsDatastorePage(false);
+            }}
+            className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition-all shadow-md active:scale-95"
+          >
+            Quay lại ứng dụng CloudSend
+          </button>
+        </div>
+      );
+    }
+
+    // 3. Là DEV chính chủ -> Cho phép vào
+    return (
+      <DevDatastorePage
+        onBackToApp={() => {
+          window.history.pushState(null, '', '/');
+          setIsDatastorePage(false);
+        }}
+      />
     );
   }
 

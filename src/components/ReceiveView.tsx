@@ -117,10 +117,15 @@ export const ReceiveView: React.FC = () => {
   };
 
   const handleDownloadFile = (item: DirectTransfer) => {
-    if (!item.fileData) return;
+    const fileSource = item.fileUrl || item.fileData;
+    if (!fileSource) return;
     const a = document.createElement('a');
-    a.href = item.fileData;
+    a.href = fileSource;
     a.download = item.fileName || 'cloudsend-file';
+    if (item.fileUrl) {
+      a.target = '_blank';
+      a.rel = 'noreferrer';
+    }
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -271,7 +276,9 @@ export const ReceiveView: React.FC = () => {
               const isPending = item.status === 'pending';
               const isCompleted = item.status === 'completed';
               const isDeclined = item.status === 'declined';
-              const isImage = item.fileType?.startsWith('image/') && !!item.fileData;
+              const hasFile = !!(item.fileData || item.fileUrl);
+              const isImage = item.fileType?.startsWith('image/') && hasFile;
+              const imageSrc = item.fileData || item.fileUrl;
 
               return (
                 <div
@@ -287,12 +294,12 @@ export const ReceiveView: React.FC = () => {
                     {/* Actual Image Thumbnail or Document Icon */}
                     {isImage ? (
                       <div 
-                        onClick={() => setPreviewImage(item.fileData!)}
+                        onClick={() => imageSrc && setPreviewImage(imageSrc)}
                         className="relative group/thumb cursor-pointer w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden border border-slate-700 bg-slate-950 shrink-0 shadow-md hover:ring-2 hover:ring-emerald-500 transition-all"
                         title="Nhấn để xem ảnh phóng to"
                       >
                         <img 
-                          src={item.fileData} 
+                          src={imageSrc} 
                           alt={item.fileName || 'Ảnh'} 
                           className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform"
                         />
@@ -343,11 +350,11 @@ export const ReceiveView: React.FC = () => {
                       </p>
 
                       {/* Image preview hint if image */}
-                      {isImage && (
+                      {isImage && imageSrc && (
                         <div className="mt-1.5 flex items-center gap-2">
                           <button
                             type="button"
-                            onClick={() => setPreviewImage(item.fileData!)}
+                            onClick={() => setPreviewImage(imageSrc)}
                             className="text-[11px] text-emerald-400 hover:text-emerald-300 hover:underline flex items-center gap-1 font-medium"
                           >
                             <Eye className="w-3 h-3" />
@@ -410,12 +417,12 @@ export const ReceiveView: React.FC = () => {
                           </button>
                         )}
 
-                        {item.fileData && (
+                        {hasFile && (
                           <>
-                            {isImage && (
+                            {isImage && imageSrc && (
                               <button
                                 type="button"
-                                onClick={() => setPreviewImage(item.fileData!)}
+                                onClick={() => setPreviewImage(imageSrc)}
                                 className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium flex items-center gap-1.5 transition-colors"
                               >
                                 <Eye className="w-3.5 h-3.5" />

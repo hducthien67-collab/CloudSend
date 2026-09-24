@@ -159,36 +159,38 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
           </div>
 
-          {/* DATASTORE Direct Button (Accessible for cross-page data inspection) */}
-          <div className="flex items-center bg-emerald-500/15 hover:bg-emerald-500/20 border border-emerald-500/40 rounded-xl p-0.5 shadow-lg shadow-emerald-500/10 transition-colors">
-            <button
-              id="open-datastore-btn"
-              type="button"
-              onClick={() => {
-                if (onOpenDevPage) {
-                  onOpenDevPage();
-                } else {
-                  window.location.href = '/?page=datastore';
-                }
-              }}
-              title="Mở TRANG WEB DATASTORE (Kho dữ liệu Firestore trực tiếp & Đồng bộ thời gian thực)"
-              className="px-2.5 sm:px-3 py-1.5 rounded-lg text-emerald-300 hover:text-white text-xs font-bold transition-all flex items-center gap-1.5"
-            >
-              <Database className="w-4 h-4 text-emerald-400" />
-              <span className="hidden sm:inline">{isDev ? 'DEV DATASTORE' : 'DATASTORE'}</span>
-            </button>
-            <button
-              id="open-datastore-tab-btn"
-              type="button"
-              onClick={() => {
-                window.open('/?page=datastore', '_blank');
-              }}
-              title="Mở trang web Datastore trong TAB MỚI riêng biệt"
-              className="p-1.5 rounded-lg hover:bg-emerald-500/30 text-emerald-300 hover:text-white border-l border-emerald-500/30 transition-colors"
-            >
-              <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
-            </button>
-          </div>
+          {/* DATASTORE Direct Button (CHỈ HIỂN THỊ DUY NHẤT CHO DEV: hducthien67@gmail.com) */}
+          {isDev && (
+            <div className="flex items-center bg-emerald-500/15 hover:bg-emerald-500/20 border border-emerald-500/40 rounded-xl p-0.5 shadow-lg shadow-emerald-500/10 transition-colors">
+              <button
+                id="open-datastore-btn"
+                type="button"
+                onClick={() => {
+                  if (onOpenDevPage) {
+                    onOpenDevPage();
+                  } else {
+                    window.location.href = '/?page=datastore';
+                  }
+                }}
+                title="Mở TRANG WEB DATASTORE (Dành riêng cho DEV)"
+                className="px-2.5 sm:px-3 py-1.5 rounded-lg text-emerald-300 hover:text-white text-xs font-bold transition-all flex items-center gap-1.5"
+              >
+                <Database className="w-4 h-4 text-emerald-400" />
+                <span className="hidden sm:inline">DEV DATASTORE</span>
+              </button>
+              <button
+                id="open-datastore-tab-btn"
+                type="button"
+                onClick={() => {
+                  window.open('/?page=datastore', '_blank');
+                }}
+                title="Mở trang web Datastore trong TAB MỚI riêng biệt"
+                className="p-1.5 rounded-lg hover:bg-emerald-500/30 text-emerald-300 hover:text-white border-l border-emerald-500/30 transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
+              </button>
+            </div>
+          )}
 
           {/* Rules / Nội quy Button */}
           {onOpenRules && (

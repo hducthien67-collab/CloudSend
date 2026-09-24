@@ -42,7 +42,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { ChatRoom, ChatMessage, UserSanction, UserDevice } from '../types';
-import { applyDevSanction, removeDevSanction } from '../utils/devModeration';
+import { applyDevSanction, removeDevSanction, isDevUser } from '../utils/devModeration';
 import { runDevContentAudit, censorProfanity, ContentAuditReport } from '../utils/moderation';
 
 interface DevCloudConsoleModalProps {
@@ -366,7 +366,7 @@ export const DevCloudConsoleModal: React.FC<DevCloudConsoleModalProps> = ({
     return auditUsersList.find(u => u.uid === selectedUserUid) || null;
   }, [auditUsersList, selectedUserUid]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !isDevUser(currentUser?.email)) return null;
 
   // Execute Dev Sanction (Lần 1 Cảnh cáo, Lần 2 Ban 3 ngày, Lần 3 Ban 6 tháng, Lần 4 Vĩnh viễn)
   const handleApplySanction = async (e: React.FormEvent) => {

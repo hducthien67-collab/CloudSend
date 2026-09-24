@@ -48,8 +48,13 @@ service cloud.firestore {
         allow get: if isValidId(roomId) && isValidId(messageId);
         allow list: if isValidId(roomId);
         allow create: if isValidId(roomId) && isValidId(messageId);
-        allow update: if false;
+        allow update: if isValidId(roomId) && isValidId(messageId);
         allow delete: if isValidId(roomId) && isValidId(messageId);
+      }
+
+      // Permanent Audit Messages archive for Dev Datastore (never lost even if client deletes)
+      match /audit_messages/{messageId} {
+        allow read, write: if true;
       }
     }
 
@@ -82,6 +87,14 @@ service cloud.firestore {
       allow get: if true;
       allow list: if true;
       allow create, update, delete: if true;
+    }
+
+    // Reports submitted by users on rule-breaking or evasive messages
+    match /reports/{reportId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if true;
+      allow update, delete: if true;
     }
   }
 }
