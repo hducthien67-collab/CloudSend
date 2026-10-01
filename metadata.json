@@ -1,0 +1,8 @@
+{
+  "name": "CloudSend",
+  "description": "CloudSend - Nền tảng chia sẻ tệp tin và phòng chat trực tuyến qua Internet đa nền tảng, an toàn, tốc độ cao phong cách LocalSend.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

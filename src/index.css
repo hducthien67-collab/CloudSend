@@ -1,0 +1,611 @@
+@import "tailwindcss";
+
+html, body {
+  background-color: #020617;
+  color: #f8fafc;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  -webkit-text-size-adjust: 100%;
+  -moz-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* ==========================================================
+   GLOBAL TEXT SELECTION DISCIPLINE (CHỐNG BÔI ĐEN TOÀN TRANG)
+   Mặc định vô hiệu hóa bôi đen trên toàn bộ giao diện web,
+   TRỪ:
+   1. Nội dung tin nhắn người dùng gửi trong phòng chat
+   2. Các đoạn văn bản / mã số có nút Sao Chép (Copy)
+   3. Các ô nhập liệu (input / textarea / contenteditable)
+   ========================================================== */
+*, *::before, *::after {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Cho phép bôi đen & nhập liệu trên các ô nhập liệu tiêu chuẩn */
+input,
+textarea,
+select,
+[contenteditable="true"],
+[contenteditable=""] {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+}
+
+/* 1. Cho phép bôi đen nội dung tin nhắn do người dùng gửi trong phòng chat */
+.chat-scroll-container p,
+.chat-scroll-container .chat-message-text,
+.chat-bubble-item p,
+.chat-bubble-item .chat-message-text,
+.chat-message-body,
+[data-chat-message="true"],
+.chat-selectable-text,
+.chat-message-content {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+}
+
+/* 2. Cho phép bôi đen tất cả văn bản có nút Sao Chép hoặc đánh dấu copyable */
+.copyable-text,
+.selectable-text,
+.select-text,
+[data-copyable="true"],
+[data-allow-copy="true"],
+.copy-target,
+pre,
+code,
+.selectable-code {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+}
+
+#root {
+  background-color: #020617;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+
+/* Modern Sleek Dark Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.5);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(51, 65, 85, 0.8);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 185, 129, 0.8);
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Performance optimizations for mobile & desktop */
+main, div {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Chat feed hardware-accelerated smooth scrolling */
+.chat-scroll-container {
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: auto;
+  overscroll-behavior-y: contain;
+  transform: translateZ(0);
+  will-change: scroll-position;
+}
+
+/* ==========================================================
+   HIỆU ỨNG TẤM VẢI LỤA CUỘN & ÁNH SÁNG LOGO TỪ TRÊN XUỐNG DƯỚI
+   ========================================================== */
+
+/* 1. Vệt sáng dải lụa cuộn chéo qua Logo từ góc trên-trái xuống góc dưới-phải */
+@keyframes silk-roll {
+  0% {
+    transform: translate(-100%, -100%) rotate(35deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.85;
+  }
+  80% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate(100%, 100%) rotate(35deg);
+    opacity: 0;
+  }
+}
+
+.animate-silk-roll {
+  animation: silk-roll 3.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* 2. Hiệu ứng chuyển tab mượt mà không lag (Smooth Tab Switch Transition) */
+@keyframes tabEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.995);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-tab-switch {
+  animation: tabEnter 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+  transform: translateZ(0);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0.3;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* 3. Con trỏ viết chữ mượt mà (Smooth Caret Pulse) */
+@keyframes smooth-caret {
+  0%, 100% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  50% {
+    opacity: 0.2;
+    transform: scaleY(0.9);
+  }
+}
+
+.animate-smooth-caret {
+  animation: smooth-caret 0.9s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* 4. Hiệu ứng Ô Viết Chữ Siêu Mượt (Ultra-Smooth Input Styling & Glow) */
+input, textarea, select {
+  transition: border-color 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              background-color 0.2s ease,
+              transform 0.15s ease;
+  caret-color: #10b981;
+}
+
+input:focus, textarea:focus, select:focus {
+  caret-color: #34d399;
+}
+
+/* Lớp ô nhập chữ mượt mà chuẩn đẹp (Smooth Input Class) */
+.smooth-input {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(8px);
+}
+
+.smooth-input:hover {
+  border-color: rgba(51, 65, 85, 0.9);
+  background: rgba(15, 23, 42, 0.9);
+}
+
+.smooth-input:focus {
+  border-color: rgba(16, 185, 129, 0.85) !important;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2), 0 0 20px rgba(16, 185, 129, 0.12) !important;
+  background: rgba(2, 6, 23, 0.95) !important;
+}
+
+.gpu-smooth-card {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.smooth-modal-scroll {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+/* 5. Hiệu ứng chữ phun ra từ dấu |, nhảy lên nhẹ & Dần hiện ra siêu mượt */
+@keyframes charEmergeFromCaret {
+  0% {
+    opacity: 0;
+    transform: translateX(12px) translateY(5px) scale(0.65) scaleX(0.25);
+    color: #6ee7b7;
+    filter: blur(4px);
+    text-shadow: 0 0 14px #10b981, 0 0 28px rgba(16, 185, 129, 0.9);
+  }
+  30% {
+    opacity: 0.65;
+    transform: translateX(5px) translateY(-5px) scale(1.18) scaleX(0.85);
+    filter: blur(1.5px);
+    color: #a7f3d0;
+    text-shadow: 0 0 10px #34d399, 0 0 20px rgba(52, 211, 153, 0.6);
+  }
+  65% {
+    opacity: 0.92;
+    transform: translateX(-1px) translateY(-1px) scale(1.04) scaleX(1.02);
+    filter: blur(0px);
+    color: #d1fae5;
+    text-shadow: 0 0 6px rgba(52, 211, 153, 0.4);
+  }
+  85% {
+    opacity: 0.98;
+    transform: translateX(0.5px) translateY(1px) scale(0.98);
+    color: #ecfdf5;
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) translateY(0) scale(1) scaleY(1);
+    color: inherit;
+    filter: none;
+    text-shadow: none;
+  }
+}
+
+.animate-char-emerge-from-caret {
+  display: inline-block;
+  transform-origin: bottom center;
+  animation: charEmergeFromCaret 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  will-change: transform, opacity, filter, color;
+  transform: translateZ(0);
+}
+
+@keyframes charSoftSettle {
+  0% {
+    opacity: 0.8;
+    color: #d1fae5;
+    filter: blur(0.5px);
+  }
+  100% {
+    opacity: 1;
+    color: inherit;
+    filter: none;
+  }
+}
+
+.animate-char-settle {
+  display: inline-block;
+  animation: charSoftSettle 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes spaceEmergeFromCaret {
+  0% {
+    opacity: 0;
+    width: 0px;
+    transform: scaleX(0.1) translateX(8px);
+    background-color: #34d399;
+    box-shadow: 0 0 14px #10b981;
+  }
+  35% {
+    opacity: 0.9;
+    width: 14px;
+    transform: scaleX(1.4);
+    background-color: rgba(52, 211, 153, 0.75);
+    box-shadow: 0 0 12px #10b981;
+  }
+  70% {
+    opacity: 0.4;
+    width: 8px;
+    transform: scaleX(1.1);
+  }
+  100% {
+    opacity: 0;
+    width: 6px;
+    transform: scaleX(1);
+    background-color: transparent;
+  }
+}
+
+.animate-space-emerge {
+  display: inline-block;
+  vertical-align: middle;
+  height: 4px;
+  border-radius: 9999px;
+  animation: spaceEmergeFromCaret 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes caretPulseEmitter {
+  0% {
+    transform: scaleY(1) scaleX(1);
+    box-shadow: 0 0 8px #10b981;
+  }
+  35% {
+    transform: scaleY(1.25) scaleX(1.45) translateX(1px);
+    box-shadow: 0 0 16px #34d399, 0 0 28px rgba(16, 185, 129, 0.9);
+    background-color: #6ee7b7;
+  }
+  100% {
+    transform: scaleY(1) scaleX(1) translateX(0);
+    box-shadow: 0 0 8px #10b981;
+    background-color: #10b981;
+  }
+}
+
+.animate-caret-emitter {
+  animation: caretPulseEmitter 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, box-shadow;
+  transform: translateZ(0);
+}
+
+/* 6. Hiệu ứng xuất hiện chữ siêu mượt, nhẹ nhàng, không lag (Ultra-Smooth Kinetic Text & Message Reveal) */
+@keyframes textReveal {
+  0% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  60% {
+    opacity: 0.95;
+    transform: translateY(-0.5px) scale(1.01);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-text-reveal {
+  display: inline-block;
+  animation: textReveal 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+  transform: translateZ(0);
+}
+
+@keyframes charGlowLead {
+  0% {
+    opacity: 0.4;
+    color: #6ee7b7;
+    text-shadow: 0 0 8px rgba(16, 185, 129, 0.9);
+    transform: scale(1.08) translateY(-1px);
+  }
+  100% {
+    opacity: 1;
+    color: inherit;
+    text-shadow: none;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-char-glow {
+  display: inline-block;
+  animation: charGlowLead 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+  transform: translateZ(0);
+}
+
+@keyframes messageEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.995);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-message-enter {
+  animation: messageEnter 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+  transform: translateZ(0);
+}
+
+/* 6. Hiệu ứng nút cách & chữ chuyển động ĐÀN HỒI SIÊU MƯỢT (Elastic Spring & Kinetic Typography) */
+@keyframes elasticCharPop {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.1);
+    color: #6ee7b7;
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    color: inherit;
+  }
+}
+
+.animate-elastic-char {
+  display: inline-block;
+  transform-origin: bottom center;
+  animation: elasticCharPop 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+  transform: translateZ(0);
+}
+
+@keyframes elasticSpaceBounce {
+  0% {
+    width: 2px;
+    transform: scaleX(0.2) scaleY(1.6);
+    opacity: 0.2;
+  }
+  40% {
+    width: 16px;
+    transform: scaleX(1.6) scaleY(0.65);
+    background-color: rgba(52, 211, 153, 0.8);
+    box-shadow: 0 0 16px #10b981, 0 0 30px rgba(16, 185, 129, 0.6);
+    opacity: 1;
+  }
+  75% {
+    width: 8px;
+    transform: scaleX(0.85) scaleY(1.15);
+  }
+  100% {
+    width: 6px;
+    transform: scaleX(1) scaleY(1);
+    background-color: rgba(16, 185, 129, 0.35);
+    opacity: 0.7;
+  }
+}
+
+.animate-elastic-space {
+  display: inline-block;
+  vertical-align: middle;
+  height: 6px;
+  border-radius: 9999px;
+  animation: elasticSpaceBounce 0.42s cubic-bezier(0.34, 1.75, 0.64, 1) forwards;
+}
+
+@keyframes elasticJellySquash {
+  0% {
+    transform: scale(0.9) scaleX(0.8) scaleY(1.25);
+  }
+  30% {
+    transform: scale(1.28) scaleX(1.4) scaleY(0.65);
+    box-shadow: 0 0 20px #10b981, 0 0 40px rgba(52, 211, 153, 0.7);
+  }
+  60% {
+    transform: scale(0.94) scaleX(0.9) scaleY(1.12);
+  }
+  80% {
+    transform: scale(1.05) scaleX(1.06) scaleY(0.95);
+  }
+  100% {
+    transform: scale(1) scaleX(1) scaleY(1);
+  }
+}
+
+.animate-jelly-squash {
+  animation: elasticJellySquash 0.45s cubic-bezier(0.34, 1.75, 0.64, 1) forwards;
+}
+
+@keyframes smooth-space-pulse {
+  0% {
+    transform: scaleX(0.88) translateY(0);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scaleX(1.2) translateY(-2px);
+    opacity: 1;
+    box-shadow: 0 0 14px rgba(16, 185, 129, 0.9);
+  }
+  100% {
+    transform: scaleX(0.88) translateY(0);
+    opacity: 0.6;
+  }
+}
+
+.animate-space-pulse {
+  animation: smooth-space-pulse 1.4s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+}
+
+@keyframes space-glide {
+  0% {
+    width: 20px;
+    transform: scale(0.8) scaleX(0.6);
+    opacity: 0.4;
+  }
+  40% {
+    width: 68px;
+    transform: scale(1.25) scaleX(1.35) scaleY(0.7);
+    opacity: 1;
+    box-shadow: 0 0 20px #10b981;
+  }
+  100% {
+    width: 44px;
+    transform: scale(1) scaleX(1) scaleY(1);
+    opacity: 0.85;
+  }
+}
+
+.animate-space-glide {
+  animation: space-glide 0.38s cubic-bezier(0.34, 1.75, 0.64, 1) forwards;
+}
+
+@keyframes space-tap {
+  0% {
+    transform: scale(0.92);
+    background-color: rgba(16, 185, 129, 0.4);
+  }
+  50% {
+    transform: scale(1.08);
+    background-color: rgba(16, 185, 129, 0.9);
+  }
+  100% {
+    transform: scale(1);
+    background-color: rgba(16, 185, 129, 0.2);
+  }
+}
+
+.animate-space-tap {
+  animation: space-tap 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ==========================================================
+   SMART TV & 10-FOOT LEANBACK UI ADAPTATIONS (DPI FIX)
+   ========================================================== */
+html.tv-mode {
+  --tv-font-scale: 1.25;
+  user-select: none;
+}
+
+html.tv-mode body {
+  padding-left: clamp(16px, 2.5vw, 36px);
+  padding-right: clamp(16px, 2.5vw, 36px);
+  box-sizing: border-box;
+}
+
+html.tv-mode :focus-visible,
+html.tv-mode .tv-focus-target:focus,
+html.tv-mode [tabindex]:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 4px #10b981, 0 0 25px rgba(16, 185, 129, 0.7) !important;
+  transform: scale(1.02);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  z-index: 40;
+}
+
+html.tv-mode button,
+html.tv-mode [role="button"],
+html.tv-mode a {
+  min-height: 48px;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
