@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { auth } from '../firebase/config';
 import { 
   X, 
   Laptop, 
@@ -46,12 +47,14 @@ import {
   ShieldCheck,
   FileText,
   Send,
-  Inbox
+  Inbox,
+  Camera
 } from 'lucide-react';
 import { DeviceType, LoginSession } from '../types';
 import { AVATAR_COLORS, getDeviceTypeInfo, generateDefaultDeviceName } from '../utils/device';
 import { playReceiveSound } from '../utils/sound';
 import { isDevUser } from '../utils/devModeration';
+import { FullscreenDesignStudio } from './FullscreenDesignStudio';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -93,7 +96,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     verifyEmailCodeAndLink,
     getLoginSessions,
     logoutSession,
-    logoutAllDevices
+    logoutAllDevices,
+    syncGoogleProfilePhoto,
+    linkWithGoogleAccount
   } = useAuth();
   
   // Tab Management
@@ -113,6 +118,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [customBio, setCustomBio] = useState<string>(settings.customBio || 'Sẵn sàng truyền nhận dữ liệu tốc độ cao.');
   const [cardStyle, setCardStyle] = useState<'glass' | 'glow' | 'minimal' | 'solid'>(settings.cardStyle || 'glow');
   const [customHexColor, setCustomHexColor] = useState<string>(settings.customHexColor || settings.avatarColor || '#10B981');
+  const [customAvatarUrl, setCustomAvatarUrl] = useState<string | undefined>(settings.customAvatarUrl);
+  const [customDesignData, setCustomDesignData] = useState<string | undefined>(settings.customDesignData);
+  const [isFullscreenStudioOpen, setIsFullscreenStudioOpen] = useState(false);
+  const [devToastMessage, setDevToastMessage] = useState<string | null>(null);
+
+  const avatarFileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const showUnderDevelopmentToast = (msg = 'Tính năng đang phát triển. Studio Tự Thiết Kế sẽ sớm mở lại trong bản cập nhật tới!') => {
+    setDevToastMessage(msg);
+    setTimeout(() => {
+      setDevToastMessage(null);
+    }, 3800);
+  };
+
+  const handleAvatarFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Vui lòng chọn tệp hình ảnh hợp lệ (PNG, JPG, WebP...)');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (uploadEvent) => {
+      const result = uploadEvent.target?.result as string;
+      if (result) {
+        setCustomAvatarUrl(result);
+        updateSettings({ customAvatarUrl: result });
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   const currentThemeObj = React.useMemo(() => {
     return THEME_PRESETS.find(t => t.id === themeStyle) || THEME_PRESETS[0];
@@ -146,6 +183,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
 
   // 4. Liên Kết Tài Khoản (Email) với Mã Bảo Mật 6 Số (OTP)
+  const isGoogleUser = Boolean(
+    auth.currentUser?.providerData?.some((p: any) => p.providerId === 'google.com') ||
+    (currentUser?.email && !userProfile?.username && Boolean(currentUser?.photoURL))
+  );
   const isLinkedEmail = Boolean(currentUser?.email && !currentUser.email.includes('@cloudsend.local') && !currentUser.email.startsWith('guest_'));
   const isEmailFullyVerified = Boolean(userProfile?.isEmailVerified || (isLinkedEmail && userProfile?.linkedEmail));
   const [linkEmailInput, setLinkEmailInput] = useState(isLinkedEmail ? (currentUser?.email || '') : '');
@@ -215,6 +256,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setCustomBio(settings.customBio || 'Sẵn sàng truyền nhận dữ liệu tốc độ cao.');
       setCardStyle(settings.cardStyle || 'glow');
       setCustomHexColor(settings.customHexColor || settings.avatarColor || '#10B981');
+      setCustomAvatarUrl(settings.customAvatarUrl);
+      setCustomDesignData(settings.customDesignData);
       setEditDisplayName(currentUser?.displayName || userProfile?.displayName || '');
     }
   }, [isOpen, settings, currentUser, userProfile]);
@@ -255,6 +298,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       customBio: customBio.trim(),
       cardStyle,
       customHexColor,
+      customAvatarUrl,
+      customDesignData,
     });
     if (syncedName && (!currentUser?.displayName || currentUser.displayName !== syncedName)) {
       try {
@@ -418,19 +463,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
-  // 4. Verify 6-Digit OTP Code & Link Email
-  const handleVerifyOtpSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLinkEmailError(null);
-    setLinkEmailSuccess(null);
-
+  // 4. Verify 6-Digit OTP Code & Link Email (Supports auto-verify on paste or 6 digits)
+  const executeVerifyOtp = async (codeToVerify: string) => {
     const cleanEmail = linkEmailInput.trim().toLowerCase();
-    const cleanCode = otpCodeInput.trim();
+    const cleanCode = codeToVerify.trim();
 
-    if (!cleanCode) {
-      setLinkEmailError('Vui lòng nhập mã xác nhận 6 chữ số.');
+    if (!cleanCode || cleanCode.length !== 6) {
       return;
     }
+
+    setLinkEmailError(null);
+    setLinkEmailSuccess(null);
 
     if (isOtpExpired || (otpExpiresTimestamp && Date.now() > otpExpiresTimestamp)) {
       setLinkEmailError('Mã xác nhận đã hết hạn (chỉ có hiệu lực trong 15 phút). Vui lòng nhấn "Gửi lại mã mới".');
@@ -441,7 +484,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setIsVerifyingOtp(true);
     try {
       await verifyEmailCodeAndLink(cleanEmail, cleanCode);
-      setLinkEmailSuccess(`Chúc mừng! Tài khoản đã liên kết và xác thực thành công với Email [${cleanEmail}].`);
+      setLinkEmailSuccess(`Chúc mừng! Tài khoản đã xác thực thành công với Email [${cleanEmail}].`);
       setIsOtpSent(false);
       setEmailDispatchData(null);
       setIsEditingLinkedEmail(false);
@@ -453,6 +496,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setLinkEmailError(err?.message || 'Mã xác thực không hợp lệ. Vui lòng thử lại.');
     } finally {
       setIsVerifyingOtp(false);
+    }
+  };
+
+  const handleVerifyOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await executeVerifyOtp(otpCodeInput);
+  };
+
+  const handleOtpInputChange = (rawVal: string) => {
+    const cleaned = rawVal.replace(/[^0-9]/g, '').slice(0, 6);
+    setOtpCodeInput(cleaned);
+    if (cleaned.length === 6 && !isVerifyingOtp) {
+      executeVerifyOtp(cleaned);
+    }
+  };
+
+  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pasted = e.clipboardData.getData('text');
+    const digits = pasted.replace(/[^0-9]/g, '').slice(0, 6);
+    if (digits.length === 6) {
+      e.preventDefault();
+      setOtpCodeInput(digits);
+      if (!isVerifyingOtp) {
+        executeVerifyOtp(digits);
+      }
     }
   };
 
@@ -888,19 +956,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {activeTab === 'custom_design' && (
             <div className="space-y-6 animate-in fade-in duration-200">
               
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
-                    <Wand2 className="w-4 h-4" />
-                    Khung Tự Thiết Kế Giao Diện & Danh Tính
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Tùy biến phong cách thẻ cá nhân, hiệu ứng ánh sáng, màu sắc avatar và huy hiệu riêng
+              {/* STUDIO LAUNCH BANNER - TẠM KHÓA ĐANG PHÁT TRIỂN */}
+              <div 
+                onClick={() => showUnderDevelopmentToast()}
+                className="p-5 rounded-2xl bg-gradient-to-r from-purple-950/60 via-slate-900 to-indigo-950/60 border border-purple-500/30 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer hover:border-amber-500/40 transition-all"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="p-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      <Lock className="w-5 h-5 text-amber-400" />
+                    </span>
+                    <h3 className="text-base font-black text-white tracking-tight">
+                      Studio Tự Thiết Kế Toàn Màn Hình
+                    </h3>
+                    <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30 flex items-center gap-1">
+                      <Lock className="w-3 h-3 text-amber-400" />
+                      TẠM KHÓA • ĐANG PHÁT TRIỂN
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Tính năng đang được hoàn thiện. Nhấp vào đây sẽ có thông báo nhắc nhở tính năng đang trong quá trình phát triển.
                   </p>
                 </div>
-                <span className="text-xs text-purple-300 font-mono bg-purple-500/10 px-2.5 py-1 rounded-full border border-purple-500/20 font-bold">
-                  Design Studio
-                </span>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      showUnderDevelopmentToast();
+                    }}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs sm:text-sm font-bold shadow-md border border-amber-500/30 transition-all active:scale-95"
+                  >
+                    <Lock className="w-4 h-4 text-amber-400" />
+                    <span>Mở Studio (Đang phát triển)</span>
+                  </button>
+                </div>
               </div>
 
               {/* Giao diện 2 cột: Cột trái tùy chỉnh, Cột phải Khung Xem Trước Thời Gian Thực */}
@@ -911,10 +1002,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   
                   {/* 1. Chọn Theme Preset */}
                   <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 space-y-3">
-                    <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                      <Palette className="w-3.5 h-3.5 text-purple-400" />
-                      <span>Chủ đề phong cách (Theme Presets)</span>
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                        <Palette className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Chủ đề phong cách (Theme Presets)</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => showUnderDevelopmentToast()}
+                        className="text-[11px] text-slate-400 hover:text-amber-300 font-semibold flex items-center gap-1 cursor-pointer"
+                      >
+                        <Lock className="w-3 h-3 text-amber-400" />
+                        <span>Mở thư viện mẫu (Đang phát triển)</span>
+                      </button>
+                    </div>
 
                     <div className="grid grid-cols-3 gap-2">
                       {THEME_PRESETS.map((p) => {
@@ -975,16 +1076,43 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                   </div>
 
-                  {/* 3. Màu sắc Avatar & Mã màu HEX */}
+                  {/* 3. Màu sắc Avatar & Đổi ảnh đại diện */}
                   <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 space-y-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
                       <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
                         <Flame className="w-3.5 h-3.5 text-purple-400" />
-                        <span>Bảng màu Avatar & Điểm nhấn</span>
+                        <span>Màu sắc & Ảnh đại diện</span>
                       </label>
-                      <span className="text-[10px] font-mono text-slate-400">
-                        HEX: {customHexColor}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <input 
+                          type="file" 
+                          ref={avatarFileInputRef} 
+                          onChange={handleAvatarFileUpload} 
+                          accept="image/*" 
+                          className="hidden" 
+                        />
+                        <button
+                          type="button"
+                          onClick={() => avatarFileInputRef.current?.click()}
+                          className="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 transition-all cursor-pointer"
+                        >
+                          <Camera className="w-3 h-3" />
+                          <span>Đổi / Tải ảnh từ máy</span>
+                        </button>
+                        {customAvatarUrl && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCustomAvatarUrl(undefined);
+                              updateSettings({ customAvatarUrl: undefined });
+                            }}
+                            className="text-[10px] text-rose-400 hover:text-rose-300 font-semibold px-2 py-1 rounded-lg bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 transition-all cursor-pointer"
+                            title="Xóa ảnh đại diện tùy chỉnh để dùng chữ cái mặc định"
+                          >
+                            Xóa ảnh
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap">
@@ -1062,10 +1190,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <Eye className="w-3.5 h-3.5 text-purple-400" />
                         Khung Xem Trước Trực Tiếp
                       </span>
-                      <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                        Live Canvas
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => showUnderDevelopmentToast()}
+                        className="text-[10px] text-amber-300 font-mono flex items-center gap-1 bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-500/30 cursor-pointer hover:bg-amber-500/25 transition-all"
+                      >
+                        <Lock className="w-2.5 h-2.5 text-amber-400" />
+                        <span>Studio (Đang phát triển)</span>
+                      </button>
                     </div>
 
                     {/* KHUNG THẺ THỰC TẾ (THE DESIGN CANVAS) */}
@@ -1082,10 +1214,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-3">
                             <div 
-                              className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-black text-lg shadow-lg relative shrink-0 ring-2 ring-white/20"
+                              className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-black text-lg shadow-lg relative shrink-0 ring-2 ring-white/20 overflow-hidden"
                               style={{ backgroundColor: avatarColor }}
                             >
-                              {(currentUser?.displayName || currentUser?.email || 'U')[0].toUpperCase()}
+                              {(customAvatarUrl || currentUser?.photoURL) ? (
+                                <img 
+                                  src={customAvatarUrl || currentUser?.photoURL || ''} 
+                                  alt="Avatar" 
+                                  className="w-full h-full object-cover" 
+                                  referrerPolicy="no-referrer"
+                                  crossOrigin="anonymous"
+                                />
+                              ) : (
+                                (currentUser?.displayName || currentUser?.email || 'U')[0].toUpperCase()
+                              )}
                               <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 ring-2 ring-slate-950" />
                             </div>
                             <div className="min-w-0">
@@ -1128,7 +1270,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
 
                     <div className="text-[11px] text-slate-400 text-center italic">
-                      * Nhấn "Lưu thay đổi" bên dưới để áp dụng toàn bộ giao diện đã thiết kế vào tài khoản của bạn.
+                      * Nhấn "Mở Studio Tự Thiết Kế" bên trên để vẽ, chèn ảnh từ máy tính hoặc tùy biến toàn diện.
                     </div>
                   </div>
                 </div>
@@ -1391,319 +1533,387 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
 
               {/* ============================================================ */}
-              {/* THANH 4: LIÊN KẾT TÀI KHOẢN (EMAIL & BẢO MẬT OTP 6 CHỮ SỐ) */}
+              {/* THANH 4: LIÊN KẾT / XÁC THỰC TÀI KHOẢN */}
               {/* ============================================================ */}
-              <div className="bg-slate-950/70 border border-slate-800/90 rounded-2xl p-4 sm:p-5 space-y-4 shadow-md">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <div className="p-2 rounded-xl bg-blue-500/15 text-blue-400 border border-blue-500/30">
-                      <Mail className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2 flex-wrap">
-                        <span>4. Liên Kết Tài Khoản (Bảo Mật OTP 6 Số)</span>
-                        {isEmailFullyVerified ? (
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 font-bold">
-                            <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                            Đã xác thực OTP 6 số
-                          </span>
-                        ) : isLinkedEmail ? (
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 font-bold">
-                            Đã liên kết
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
-                            Chưa liên kết
-                          </span>
-                        )}
-                      </h4>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        Liên kết Email với mã xác nhận bảo mật 6 chữ số có hiệu lực 15 phút
-                      </p>
-                    </div>
-                  </div>
-
-                  {isEmailFullyVerified && !isEditingLinkedEmail && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsEditingLinkedEmail(true);
-                        setIsOtpSent(false);
-                        setEmailDispatchData(null);
-                      }}
-                      className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-blue-500/40 text-blue-400 hover:text-blue-300 text-xs font-semibold transition-colors flex items-center gap-1.5 self-start sm:self-auto"
-                    >
-                      <RefreshCw className="w-3 h-3" />
-                      <span>Đổi / Liên kết email khác</span>
-                    </button>
-                  )}
-                </div>
-
-                {/* Thông báo lỗi nếu có */}
-                {linkEmailError && (
-                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2.5 animate-in fade-in">
-                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                    <div className="flex-1 leading-relaxed">
-                      <span>{linkEmailError}</span>
-                      {isOtpExpired && (
-                        <div className="mt-2">
-                          <button
-                            type="button"
-                            onClick={handleSendOtp}
-                            disabled={isSendingOtp}
-                            className="px-3 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 text-xs font-bold transition-all flex items-center gap-1.5"
-                          >
-                            <RefreshCw className={`w-3 h-3 ${isSendingOtp ? 'animate-spin' : ''}`} />
-                            <span>Gửi lại mã mới ngay</span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Thông báo thành công nếu có */}
-                {linkEmailSuccess && (
-                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>{linkEmailSuccess}</span>
-                  </div>
-                )}
-
-                {/* TRẠNG THÁI 1: ĐÃ LIÊN KẾT & XÁC THỰC THÀNH CÔNG (VÀ KHÔNG Ở CHẾ ĐỘ SỬA) */}
-                {isEmailFullyVerified && !isEditingLinkedEmail ? (
-                  <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              {isGoogleUser ? (
+                /* TRƯỜNG HỢP A: ĐÃ ĐĂNG NHẬP BẰNG TÀI KHOẢN GOOGLE -> KHÔNG CẦN LIÊN KẾT NỮA */
+                <div className="bg-slate-950/70 border border-slate-800/90 rounded-2xl p-4 sm:p-5 space-y-4 shadow-md relative overflow-hidden">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                        <ShieldCheck className="w-4 h-4" />
+                      </div>
                       <div>
-                        <div className="text-[11px] text-slate-400">Địa chỉ Email đã xác thực an toàn:</div>
-                        <div className="text-sm font-bold text-white font-mono mt-0.5 flex items-center gap-2">
-                          <span>{currentUser?.email || userProfile?.linkedEmail}</span>
-                          <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                            <Check className="w-3 h-3 stroke-[3]" />
-                            Đã bảo mật
+                        <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2 flex-wrap">
+                          <span className="flex items-center gap-1.5">
+                            <Link2 className="w-3.5 h-3.5 text-emerald-400 -rotate-45" />
+                            <span>4. Tài Khoản Google Đã Xác Thực</span>
+                            <Link2 className="w-3.5 h-3.5 text-emerald-400 rotate-45" />
                           </span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 font-bold">
+                            <Check className="w-3 h-3 text-emerald-400 stroke-[3]" />
+                            Tài khoản Google chính chủ
+                          </span>
+                        </h4>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Bạn đang đăng nhập trực tiếp bằng Tài khoản Google.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-slate-900 border border-emerald-500/30 space-y-3 relative overflow-hidden">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                          <Link2 className="w-4 h-4 -rotate-45" />
+                        </div>
+                        <div>
+                          <div className="text-[11px] text-slate-400">Địa chỉ đăng nhập Google:</div>
+                          <div className="text-sm font-bold text-white font-mono mt-0.5 flex items-center gap-2">
+                            <span>{currentUser?.email}</span>
+                            <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                              <Link2 className="w-3 h-3 text-emerald-400 -rotate-45" />
+                              <span>Đã bảo mật</span>
+                              <Link2 className="w-3 h-3 text-emerald-400 rotate-45" />
+                            </span>
+                          </div>
                         </div>
                       </div>
-                      <div className="text-right">
+                      <div className="flex items-center gap-2 text-left sm:text-right">
                         <span className="text-[11px] text-slate-400 font-mono">
-                          Xác thực: {userProfile?.emailVerifiedAt ? new Date(userProfile.emailVerifiedAt).toLocaleDateString('vi-VN') : 'Đang hoạt động'}
+                          Ngày xác thực: {userProfile?.emailVerifiedAt ? new Date(userProfile.emailVerifiedAt).toLocaleDateString('vi-VN') : 'Đang hoạt động'}
                         </span>
+                        <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0 hidden sm:flex">
+                          <Link2 className="w-4 h-4 rotate-45" />
+                        </div>
                       </div>
                     </div>
                     <div className="pt-2 border-t border-slate-800/80 text-xs text-slate-400 flex items-center gap-1.5">
                       <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Tài khoản được bảo vệ bởi hệ thống xác thực OTP 6 số. Mọi quyền truy cập nhạy cảm đều được bảo vệ.</span>
+                      <span>Tài khoản Google đã được bảo vệ toàn diện bởi Google Identity. Không cần thực hiện thêm liên kết nào khác.</span>
                     </div>
                   </div>
-                ) : (
-                  /* TRẠNG THÁI 2: ĐANG NHẬP EMAIL & XÁC THỰC MÃ 6 SỐ */
-                  <div className="space-y-4 pt-1">
-                    {/* BƯỚC 1: NHẬP ĐỊA CHỈ EMAIL VÀ BẤM GỬI MÃ */}
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-                      <div className="relative flex-1">
-                        <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                        <input
-                          type="email"
-                          value={linkEmailInput}
-                          onChange={(e) => setLinkEmailInput(e.target.value)}
-                          placeholder="Nhập địa chỉ email của bạn (ví dụ: yourname@gmail.com)"
-                          disabled={isOtpSent && !isOtpExpired}
-                          className="w-full pl-10 pr-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono disabled:opacity-60"
-                        />
+                </div>
+              ) : (
+                /* TRƯỜNG HỢP B: TÀI KHOẢN ĐĂNG KÝ (THƯỜNG / KHÁCH) -> XÁC MINH EMAIL QUA OTP 6 SỐ */
+                <div className="bg-slate-950/70 border border-slate-800/90 rounded-2xl p-4 sm:p-5 space-y-4 shadow-md">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 rounded-xl bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                        <Mail className="w-4 h-4" />
                       </div>
-
-                      <button
-                        type="button"
-                        onClick={handleSendOtp}
-                        disabled={isSendingOtp || !linkEmailInput.trim()}
-                        className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-md shadow-blue-600/30 flex items-center justify-center gap-1.5 disabled:opacity-40 shrink-0 min-h-[40px]"
-                      >
-                        {isSendingOtp ? (
-                          <>
-                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                            <span>Đang gửi mã...</span>
-                          </>
-                        ) : isOtpSent ? (
-                          <>
-                            <RefreshCw className="w-3.5 h-3.5" />
-                            <span>{isOtpExpired ? 'Gửi lại mã mới' : 'Gửi lại mã'}</span>
-                          </>
-                        ) : (
-                          <>
-                            <Send className="w-3.5 h-3.5" />
-                            <span>Gửi mã xác nhận 6 số</span>
-                          </>
-                        )}
-                      </button>
-
-                      {isEditingLinkedEmail && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsEditingLinkedEmail(false);
-                            setIsOtpSent(false);
-                            setEmailDispatchData(null);
-                          }}
-                          className="px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white text-xs transition-colors shrink-0"
-                        >
-                          Hủy
-                        </button>
-                      )}
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2 flex-wrap">
+                          <span className="flex items-center gap-1.5">
+                            <Link2 className="w-3.5 h-3.5 text-blue-400 -rotate-45" />
+                            <span>4. Xác Minh & Liên Kết Email (Mã OTP 6 Số)</span>
+                            <Link2 className="w-3.5 h-3.5 text-blue-400 rotate-45" />
+                          </span>
+                          {isEmailFullyVerified ? (
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 font-bold">
+                              <Link2 className="w-3 h-3 text-emerald-400 -rotate-45" />
+                              <span>Đã xác thực OTP 6 số</span>
+                              <Link2 className="w-3 h-3 text-emerald-400 rotate-45" />
+                            </span>
+                          ) : isLinkedEmail ? (
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 font-bold flex items-center gap-1">
+                              <Link2 className="w-3 h-3 text-blue-400 -rotate-45" />
+                              <span>Đã liên kết</span>
+                              <Link2 className="w-3 h-3 text-blue-400 rotate-45" />
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                              Chưa xác minh
+                            </span>
+                          )}
+                        </h4>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Xác minh Email với mã bảo mật 6 chữ số có hiệu lực trong 15 phút
+                        </p>
+                      </div>
                     </div>
 
-                    {/* BƯỚC 2: KHI ĐÃ GỬI MÃ -> HIỂN THỊ ĐỒNG HỒ 15 PHÚT + VĂN BẢN EMAIL CÓ SẴN + Ô NHẬP 6 SỐ */}
-                    {isOtpSent && (
-                      <div className="space-y-4 pt-1 animate-in fade-in slide-in-from-top-2 duration-300">
-                        
-                        {/* 1. KHUNG ĐỒNG HỒ ĐẾM NGƯỢC 15 PHÚT */}
-                        <div className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                          isOtpExpired 
-                            ? 'bg-rose-950/40 border-rose-500/50 text-rose-300' 
-                            : 'bg-gradient-to-r from-blue-950/40 via-slate-900 to-slate-900 border-blue-500/40 text-blue-200'
-                        }`}>
-                          <div className="flex items-center gap-2.5">
-                            <Clock className={`w-5 h-5 shrink-0 ${isOtpExpired ? 'text-rose-400' : 'text-blue-400'}`} />
-                            <div>
-                              <div className="text-xs font-bold text-white flex items-center gap-2">
-                                <span>{isOtpExpired ? 'Mã xác nhận đã hết hạn!' : 'Mã xác nhận đang có hiệu lực:'}</span>
-                                <span className={`text-xs font-mono font-black px-2.5 py-0.5 rounded-lg border ${
-                                  isOtpExpired 
-                                    ? 'bg-rose-500/20 text-rose-400 border-rose-500/30 animate-pulse' 
-                                    : 'bg-blue-500/20 text-blue-300 border-blue-500/30'
-                                }`}>
-                                  {isOtpExpired ? '00:00 (Hết hạn)' : formatOtpCountdown(otpTimeLeftSeconds)}
-                                </span>
-                              </div>
-                              <div className="text-[11px] text-slate-400 mt-0.5">
-                                {isOtpExpired 
-                                  ? 'Mã 6 số chỉ sống trong 15 phút. Bạn cần nhấn "Gửi lại mã mới" để tiếp tục.' 
-                                  : 'Mỗi mã chỉ có thể sống trong 15 phút. Vui lòng nhập mã trước khi hết thời gian.'}
-                              </div>
-                            </div>
-                          </div>
+                    {isEmailFullyVerified && !isEditingLinkedEmail && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEditingLinkedEmail(true);
+                          setIsOtpSent(false);
+                          setEmailDispatchData(null);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-blue-500/40 text-blue-400 hover:text-blue-300 text-xs font-semibold transition-colors flex items-center gap-1.5 self-start sm:self-auto"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        <span>Đổi / Liên kết email khác</span>
+                      </button>
+                    )}
+                  </div>
 
-                          {isOtpExpired && (
+                  {/* Thông báo lỗi nếu có */}
+                  {linkEmailError && (
+                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2.5 animate-in fade-in">
+                      <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                      <div className="flex-1 leading-relaxed">
+                        <span>{linkEmailError}</span>
+                        {isOtpExpired && (
+                          <div className="mt-2">
                             <button
                               type="button"
                               onClick={handleSendOtp}
                               disabled={isSendingOtp}
-                              className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-md shadow-rose-600/30 flex items-center justify-center gap-1.5 shrink-0"
+                              className="px-3 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 text-xs font-bold transition-all flex items-center gap-1.5"
                             >
-                              <RefreshCw className={`w-3.5 h-3.5 ${isSendingOtp ? 'animate-spin' : ''}`} />
-                              <span>Gửi lại mã mới</span>
+                              <RefreshCw className={`w-3 h-3 ${isSendingOtp ? 'animate-spin' : ''}`} />
+                              <span>Gửi lại mã mới ngay</span>
                             </button>
-                          )}
-                        </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
-                        {/* 2. THÔNG BÁO ĐÃ GỬI MÃ ĐẾN HÒM THƯ GMAIL */}
-                        <div className="p-4 rounded-xl bg-slate-900 border border-blue-500/30 space-y-3.5 relative overflow-hidden">
-                          <div className="flex items-center justify-between pb-2 border-b border-slate-800 flex-wrap gap-2">
-                            <div className="flex items-center gap-2">
-                              <Inbox className="w-4 h-4 text-emerald-400 animate-pulse" />
-                              <span className="text-xs font-bold text-white">
-                                Đã gửi mã đến: <span className="text-emerald-400 font-mono">[{emailDispatchData?.recipientEmail || linkEmailInput}]</span>
+                  {/* Thông báo thành công nếu có */}
+                  {linkEmailSuccess && (
+                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>{linkEmailSuccess}</span>
+                    </div>
+                  )}
+
+                  {/* TRẠNG THÁI 1: ĐÃ LIÊN KẾT & XÁC THỰC THÀNH CÔNG (VÀ KHÔNG Ở CHẾ ĐỘ SỬA) */}
+                  {isEmailFullyVerified && !isEditingLinkedEmail ? (
+                    <div className="p-4 rounded-xl bg-slate-900 border border-emerald-500/30 space-y-3 relative overflow-hidden">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                            <Link2 className="w-4 h-4 -rotate-45" />
+                          </div>
+                          <div>
+                            <div className="text-[11px] text-slate-400">Địa chỉ Email đã xác thực an toàn:</div>
+                            <div className="text-sm font-bold text-white font-mono mt-0.5 flex items-center gap-2">
+                              <span>{currentUser?.email || userProfile?.linkedEmail}</span>
+                              <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                                <Link2 className="w-3 h-3 text-emerald-400 -rotate-45" />
+                                <span>Đã bảo mật</span>
+                                <Link2 className="w-3 h-3 text-emerald-400 rotate-45" />
                               </span>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <a
-                                href="https://mail.google.com"
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-[11px] text-blue-400 hover:text-blue-300 font-bold flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 border border-blue-500/30 hover:bg-blue-500/20 transition-all shadow-sm"
-                              >
-                                <ExternalLink className="w-3.5 h-3.5" />
-                                <span>Mở Gmail</span>
-                              </a>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 text-left sm:text-right">
+                          <span className="text-[11px] text-slate-400 font-mono">
+                            Xác thực: {userProfile?.emailVerifiedAt ? new Date(userProfile.emailVerifiedAt).toLocaleDateString('vi-VN') : 'Đang hoạt động'}
+                          </span>
+                          <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0 hidden sm:flex">
+                            <Link2 className="w-4 h-4 rotate-45" />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="pt-2 border-t border-slate-800/80 text-xs text-slate-400 flex items-center gap-1.5">
+                        <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>Tài khoản được bảo vệ bởi hệ thống xác thực OTP 6 số. Mọi quyền truy cập nhạy cảm đều được bảo vệ.</span>
+                      </div>
+                    </div>
+                  ) : (
+                    /* TRẠNG THÁI 2: ĐANG NHẬP EMAIL & XÁC THỰC MÃ 6 SỐ */
+                    <div className="space-y-4 pt-1">
+                      {/* BƯỚC 1: NHẬP ĐỊA CHỈ EMAIL VÀ BẤM GỬI MÃ */}
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                        <div className="relative flex-1">
+                          <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="email"
+                            value={linkEmailInput}
+                            onChange={(e) => setLinkEmailInput(e.target.value)}
+                            placeholder="Nhập địa chỉ email của bạn (ví dụ: yourname@gmail.com)"
+                            disabled={isOtpSent && !isOtpExpired}
+                            className="w-full pl-10 pr-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono disabled:opacity-60"
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleSendOtp}
+                          disabled={isSendingOtp || !linkEmailInput.trim()}
+                          className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-md shadow-blue-600/30 flex items-center justify-center gap-1.5 disabled:opacity-40 shrink-0 min-h-[40px]"
+                        >
+                          {isSendingOtp ? (
+                            <>
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              <span>Đang gửi mã...</span>
+                            </>
+                          ) : isOtpSent ? (
+                            <>
+                              <RefreshCw className="w-3.5 h-3.5" />
+                              <span>{isOtpExpired ? 'Gửi lại mã mới' : 'Gửi lại mã'}</span>
+                            </>
+                          ) : (
+                            <>
+                              <Send className="w-3.5 h-3.5" />
+                              <span>Gửi mã xác nhận 6 số</span>
+                            </>
+                          )}
+                        </button>
+
+                        {isEditingLinkedEmail && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsEditingLinkedEmail(false);
+                              setIsOtpSent(false);
+                              setEmailDispatchData(null);
+                            }}
+                            className="px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white text-xs transition-colors shrink-0"
+                          >
+                            Hủy
+                          </button>
+                        )}
+                      </div>
+
+                      {/* BƯỚC 2: KHI ĐÃ GỬI MÃ -> HIỂN THỊ ĐỒNG HỒ 15 PHÚT + HƯỚNG DẪN + Ô NHẬP 6 SỐ */}
+                      {isOtpSent && (
+                        <div className="space-y-4 pt-1 animate-in fade-in slide-in-from-top-2 duration-300">
+                          {/* 1. KHUNG ĐỒNG HỒ ĐẾM NGƯỢC 15 PHÚT */}
+                          <div className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                            isOtpExpired 
+                              ? 'bg-rose-950/40 border-rose-500/50 text-rose-300' 
+                              : 'bg-gradient-to-r from-blue-950/40 via-slate-900 to-slate-900 border-blue-500/40 text-blue-200'
+                          }`}>
+                            <div className="flex items-center gap-2.5">
+                              <Clock className={`w-5 h-5 shrink-0 ${isOtpExpired ? 'text-rose-400' : 'text-blue-400'}`} />
+                              <div>
+                                <div className="text-xs font-bold text-white flex items-center gap-2">
+                                  <span>{isOtpExpired ? 'Mã xác nhận đã hết hạn!' : 'Mã xác nhận đang có hiệu lực:'}</span>
+                                  <span className={`text-xs font-mono font-black px-2.5 py-0.5 rounded-lg border ${
+                                    isOtpExpired 
+                                      ? 'bg-rose-500/20 text-rose-400 border-rose-500/30 animate-pulse' 
+                                      : 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                                  }`}>
+                                    {isOtpExpired ? '00:00 (Hết hạn)' : formatOtpCountdown(otpTimeLeftSeconds)}
+                                  </span>
+                                </div>
+                                <div className="text-[11px] text-slate-400 mt-0.5">
+                                  {isOtpExpired 
+                                    ? 'Mã 6 số chỉ sống trong 15 phút. Bạn cần nhấn "Gửi lại mã mới" để tiếp tục.' 
+                                    : 'Mỗi mã chỉ có thể sống trong 15 phút. Vui lòng nhập mã trước khi hết thời gian.'}
+                                </div>
+                              </div>
                             </div>
+
+                            {isOtpExpired && (
+                              <button
+                                type="button"
+                                onClick={handleSendOtp}
+                                disabled={isSendingOtp}
+                                className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-md shadow-rose-600/30 flex items-center justify-center gap-1.5 shrink-0"
+                              >
+                                <RefreshCw className={`w-3.5 h-3.5 ${isSendingOtp ? 'animate-spin' : ''}`} />
+                                <span>Gửi lại mã mới</span>
+                              </button>
+                            )}
                           </div>
 
-                          {/* Hướng dẫn kiểm tra hộp thư & Thông tin cấu hình SMTP */}
-                          <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2.5">
-                            <div className="flex items-start gap-2.5 text-xs text-slate-300 leading-relaxed">
-                              <Mail className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                              <div className="space-y-1.5 w-full">
-                                <p className="font-semibold text-white">
-                                  Kiểm tra Gmail (Hộp thư đến hoặc Thư mục Rác/Spam):
-                                </p>
-                                <ul className="list-disc list-inside text-[11px] text-slate-400 space-y-0.5">
-                                  <li>Tìm thư từ <strong className="text-slate-200">CloudSend Security</strong> với tiêu đề <strong className="text-slate-200">[CloudSend] Mã xác nhận</strong>.</li>
-                                  <li>Kiểm tra cả thư mục <strong className="text-amber-300">Spam (Thư rác)</strong> hoặc mục <strong className="text-amber-300">Quảng cáo (Promotions)</strong>.</li>
-                                </ul>
+                          {/* 2. THÔNG BÁO ĐÃ GỬI MÃ ĐẾN HÒM THƯ */}
+                          <div className="p-4 rounded-xl bg-slate-900 border border-blue-500/30 space-y-3 relative overflow-hidden">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                              <div className="flex items-center gap-2">
+                                <Link2 className="w-3.5 h-3.5 text-blue-400 -rotate-45 shrink-0" />
+                                <Inbox className="w-4 h-4 text-emerald-400 animate-pulse" />
+                                <span className="text-xs font-bold text-white">
+                                  Đã gửi mã đến: <span className="text-emerald-400 font-mono">[{emailDispatchData?.recipientEmail || linkEmailInput}]</span>
+                                </span>
+                              </div>
+                              <Link2 className="w-3.5 h-3.5 text-blue-400 rotate-45 shrink-0" />
+                            </div>
 
-                                {/* Nút xem nhanh mã khi thử nghiệm hoặc khi máy chủ chưa cấu hình tài khoản gửi SMTP */}
-                                {emailDispatchData?.code && (
-                                  <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between flex-wrap gap-2 text-[11px]">
-                                    <span className="text-slate-400">
-                                      Chưa nhận được thư? (Xem mã thử nghiệm trực tiếp):
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => setOtpCodeInput(emailDispatchData.code)}
-                                      className="font-mono text-emerald-400 hover:text-emerald-300 font-bold px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 flex items-center gap-1 hover:bg-emerald-500/25 transition-colors"
-                                    >
-                                      <span>Mã test: {emailDispatchData.code}</span>
-                                      <span className="text-[10px] underline font-sans font-normal">(Điền nhanh)</span>
-                                    </button>
+                            {/* Hướng dẫn kiểm tra hộp thư theo đúng chuẩn yêu cầu */}
+                            <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2.5">
+                              <div className="flex items-start gap-2.5 text-xs text-slate-300 leading-relaxed">
+                                <Mail className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                                <div className="space-y-2 w-full">
+                                  {/* DÒNG 1 */}
+                                  <div className="text-xs text-slate-200">
+                                    <strong className="text-white">Kiểm tra Gmail (Hộp thư đến):</strong> Tìm thư từ <strong className="text-emerald-400 font-semibold">CloudSend Security</strong> với tiêu đề <strong className="text-slate-100">[CloudSend] Mã xác nhận</strong>.
                                   </div>
-                                )}
+
+                                  {/* DÒNG 2 KÈM NÚT MỞ GMAIL */}
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-slate-900">
+                                    <div className="text-[11px] text-slate-400">
+                                      Kiểm tra cả thư mục <strong className="text-amber-300 font-medium">Spam (Thư rác)</strong> hoặc mục <strong className="text-amber-300 font-medium">Quảng cáo (Promotions)</strong>.
+                                    </div>
+                                    <a
+                                      href="https://mail.google.com"
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-xs text-blue-400 hover:text-blue-300 font-bold flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/15 border border-blue-500/30 hover:bg-blue-500/25 transition-all shadow-sm shrink-0 w-fit"
+                                    >
+                                      <ExternalLink className="w-3.5 h-3.5" />
+                                      <span>Mở Gmail</span>
+                                    </a>
+                                  </div>
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
 
-                        {/* 3. Ô NHẬP MÃ 6 CHỮ SỐ VÀ NÚT XÁC THỰC HOÀN TẤT */}
-                        <form onSubmit={handleVerifyOtpSubmit} className="p-4 rounded-xl bg-slate-900 border border-blue-500/30 space-y-3">
-                          <label className="block text-xs font-bold text-white flex items-center justify-between">
-                            <span className="flex items-center gap-1.5">
-                              <KeyRound className="w-3.5 h-3.5 text-blue-400" />
-                              Nhập mã 6 chữ số từ Gmail để hoàn tất:
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              {otpCodeInput.length}/6 ký tự
-                            </span>
-                          </label>
+                          {/* 3. Ô NHẬP MÃ 6 CHỮ SỐ VÀ NÚT XÁC THỰC HOÀN TẤT (TỰ ĐỘNG XÁC THỰC KHI ĐỦ 6 SỐ HOẶC PASTE) */}
+                          <form onSubmit={handleVerifyOtpSubmit} className="p-4 rounded-xl bg-slate-900 border border-blue-500/30 space-y-3">
+                            <label className="block text-xs font-bold text-white flex items-center justify-between">
+                              <span className="flex items-center gap-1.5">
+                                <KeyRound className="w-3.5 h-3.5 text-blue-400" />
+                                Nhập mã 6 chữ số từ Gmail để hoàn tất:
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                {otpCodeInput.length}/6 ký tự
+                              </span>
+                            </label>
 
-                          <div className="flex flex-col sm:flex-row items-center gap-2.5">
-                            <div className="relative flex-1 w-full">
-                              <input
-                                type="text"
-                                maxLength={6}
-                                value={otpCodeInput}
-                                onChange={(e) => setOtpCodeInput(e.target.value.replace(/[^0-9]/g, ''))}
-                                placeholder="Nhập 6 số xác nhận (VD: 839201)"
-                                disabled={isOtpExpired || isVerifyingOtp}
-                                className={`w-full px-4 py-2.5 bg-slate-950 border border-slate-700/90 rounded-xl text-center text-white placeholder-slate-500 placeholder:text-xs sm:placeholder:text-sm placeholder:font-normal placeholder:tracking-normal focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:opacity-50 transition-all ${
-                                  otpCodeInput.length > 0 
-                                    ? 'font-mono font-black text-base sm:text-lg tracking-[0.3em] text-emerald-300' 
-                                    : 'text-xs sm:text-sm tracking-normal'
-                                }`}
-                              />
+                            <div className="flex flex-col sm:flex-row items-center gap-2.5">
+                              <div className="relative flex-1 w-full">
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
+                                  maxLength={6}
+                                  value={otpCodeInput}
+                                  onChange={(e) => handleOtpInputChange(e.target.value)}
+                                  onPaste={handleOtpPaste}
+                                  placeholder="Nhập hoặc dán 6 số (VD: 839201)"
+                                  disabled={isOtpExpired || isVerifyingOtp}
+                                  className={`w-full px-4 py-2.5 bg-slate-950 border border-slate-700/90 rounded-xl text-center text-white placeholder-slate-500 placeholder:text-xs sm:placeholder:text-sm placeholder:font-normal placeholder:tracking-normal focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:opacity-50 transition-all ${
+                                    otpCodeInput.length > 0 
+                                      ? 'font-mono font-black text-base sm:text-lg tracking-[0.3em] text-emerald-300' 
+                                      : 'text-xs sm:text-sm tracking-normal'
+                                  }`}
+                                />
+                              </div>
+
+                              <button
+                                type="submit"
+                                disabled={isVerifyingOtp || otpCodeInput.trim().length !== 6 || isOtpExpired}
+                                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:from-blue-500 hover:via-indigo-500 hover:to-blue-500 text-white text-xs font-bold transition-all shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 disabled:opacity-40 shrink-0 min-h-[44px]"
+                              >
+                                {isVerifyingOtp ? (
+                                  <>
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                    <span>Đang xác thực mã...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <ShieldCheck className="w-4 h-4 text-emerald-300" />
+                                    <span>Xác Thực Mã & Liên Kết</span>
+                                  </>
+                                )}
+                              </button>
                             </div>
-
-                            <button
-                              type="submit"
-                              disabled={isVerifyingOtp || otpCodeInput.trim().length !== 6 || isOtpExpired}
-                              className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:from-blue-500 hover:via-indigo-500 hover:to-blue-500 text-white text-xs font-bold transition-all shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 disabled:opacity-40 shrink-0 min-h-[44px]"
-                            >
-                              {isVerifyingOtp ? (
-                                <>
-                                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                  <span>Đang xác thực mã...</span>
-                                </>
-                              ) : (
-                                <>
-                                  <ShieldCheck className="w-4 h-4 text-emerald-300" />
-                                  <span>Xác Thực Mã & Liên Kết</span>
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        </form>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+                          </form>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* ============================================================ */}
               {/* THANH 5: CÁC THIẾT BỊ ĐÃ ĐĂNG NHẬP */}
@@ -2007,6 +2217,50 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* THÔNG BÁO TÍNH NĂNG ĐANG PHÁT TRIỂN (TOAST Ở PHÍA DƯỚI) */}
+      {devToastMessage && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[150] animate-in fade-in slide-in-from-bottom-5 duration-300 px-4 w-full max-w-md pointer-events-auto">
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-900/95 border border-amber-500/50 shadow-2xl backdrop-blur-xl flex items-center justify-between gap-3 text-amber-200 text-xs sm:text-sm font-semibold ring-2 ring-amber-500/20">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
+                <Lock className="w-4 h-4" />
+              </div>
+              <div className="leading-snug truncate">
+                {devToastMessage}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDevToastMessage(null)}
+              className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors shrink-0 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* FULLSCREEN DESIGN STUDIO CANVAS OVERLAY (TẠM KHÓA) */}
+      <FullscreenDesignStudio
+        isOpen={isFullscreenStudioOpen}
+        onClose={() => setIsFullscreenStudioOpen(false)}
+        currentUser={currentUser}
+        userProfile={userProfile}
+        settings={settings}
+        onSaveDesign={async (updated) => {
+          await updateSettings(updated);
+          if (updated.customAvatarUrl !== undefined) setCustomAvatarUrl(updated.customAvatarUrl);
+          if (updated.customDesignData !== undefined) setCustomDesignData(updated.customDesignData);
+          if (updated.themeStyle) setThemeStyle(updated.themeStyle);
+          if (updated.avatarColor) setAvatarColor(updated.avatarColor);
+          if (updated.customBadgeText) setCustomBadgeText(updated.customBadgeText);
+          if (updated.customBio) setCustomBio(updated.customBio);
+          if (updated.cardStyle) setCardStyle(updated.cardStyle);
+          setSavedSuccess(true);
+          setTimeout(() => setSavedSuccess(false), 2500);
+        }}
+      />
     </div>
   );
 };

@@ -70,6 +70,8 @@ interface AuthContextType {
   getLoginSessions: () => Promise<LoginSession[]>;
   logoutSession: (sessionId: string) => Promise<void>;
   logoutAllDevices: () => Promise<void>;
+  syncGoogleProfilePhoto: () => Promise<string | null>;
+  linkWithGoogleAccount: () => Promise<{ email: string; photoURL: string | null } | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -196,6 +198,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const currentSettings = settingsRef.current;
       const currentHwType = currentSettings.deviceType || (isSmartTv() ? 'tv' : detectDeviceType());
       const currentUsr = currentUserRef.current;
+      const avatarImg = currentSettings.customAvatarUrl || profile?.customAvatarUrl || currentUsr?.photoURL;
       const presenceRef = doc(db, 'presence', uid);
       await setDoc(presenceRef, {
         uid,
@@ -203,6 +206,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         deviceName: currentSettings.deviceName || profile?.deviceName || 'Thiết bị',
         deviceType: currentHwType,
         avatarColor: currentSettings.avatarColor || profile?.avatarColor || '#10B981',
+        customAvatarUrl: avatarImg || null,
         status: 'online',
         lastSeen: new Date().toISOString(),
       }, { merge: true });
@@ -319,16 +323,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
 
           let profileData: UserDevice;
+          const googleAvatar = user.photoURL || undefined;
           if (userDocSnap && userDocSnap.exists()) {
             profileData = userDocSnap.data() as UserDevice;
-            if (profileData.deviceName) {
-              setSettings((prev) => ({
-                ...prev,
-                deviceName: profileData.deviceName,
-                deviceType: detectDeviceType(),
-                avatarColor: profileData.avatarColor || prev.avatarColor,
-              }));
+            const effectiveAvatar = googleAvatar || profileData.customAvatarUrl;
+            profileData.customAvatarUrl = effectiveAvatar;
+            if (googleAvatar && profileData.customAvatarUrl !== googleAvatar) {
+              setDoc(userDocRef, { customAvatarUrl: googleAvatar }, { merge: true }).catch(() => {});
             }
+            setSettings((prev) => ({
+              ...prev,
+              deviceName: profileData.deviceName || prev.deviceName,
+              deviceType: detectDeviceType(),
+              avatarColor: profileData.avatarColor || prev.avatarColor,
+              customAvatarUrl: effectiveAvatar,
+            }));
           } else {
             profileData = {
               uid: user.uid,
@@ -337,12 +346,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               deviceName: settings.deviceName,
               deviceType: detectDeviceType(),
               avatarColor: settings.avatarColor,
+              customAvatarUrl: googleAvatar,
               createdAt: new Date().toISOString(),
             };
             try {
               await setDoc(userDocRef, profileData);
             } catch (err) {
               handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`);
+            }
+            if (googleAvatar) {
+              setSettings((prev) => ({ ...prev, customAvatarUrl: googleAvatar }));
             }
           }
 
@@ -403,6 +416,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (banCheck.isBanned) {
           await signOut(auth);
           throw new Error(banCheck.message || 'Tài khoản của bạn đã bị DEV cấm tham gia hệ thống.');
+        }
+
+        const photoUrl = res.user.photoURL;
+        if (photoUrl) {
+          setSettings((prev) => ({ ...prev, customAvatarUrl: photoUrl }));
+          if (currentUserRef.current) {
+            currentUserRef.current.photoURL = photoUrl;
+          }
         }
       }
     } catch (error: any) {
@@ -1074,8 +1095,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch {}
     localStorage.removeItem(`cloudsend_active_otp_${currentUsr.uid}`);
 
-    // Update user record & profile
+    // Update user record & profile (for registered accounts: verify email only, preserve avatar)
     const nowIso = new Date().toISOString();
+
     const updatedUser: AppUser = {
       ...currentUsr,
       email: cleanEmail,
@@ -1108,6 +1130,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isEmailVerified: true,
         emailVerifiedAt: nowIso,
       }, { merge: true });
+
+      await updatePresence(currentUsr.uid, updatedProfile);
 
       const identifier = userProfile?.username || currentUsr.displayName || '';
       if (identifier) {
@@ -1264,6 +1288,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const currentUsr = currentUserRef.current;
     if (currentUsr) {
+      const effectiveAvatar = newSettings.customAvatarUrl !== undefined 
+        ? newSettings.customAvatarUrl 
+        : (settings.customAvatarUrl || userProfile?.customAvatarUrl || currentUsr.photoURL || undefined);
+
+      if (newSettings.customAvatarUrl !== undefined) {
+        setCurrentUser((prev) => prev ? ({ ...prev, photoURL: newSettings.customAvatarUrl || null }) : null);
+      }
+
       const updatedProfile: UserDevice = {
         uid: currentUsr.uid,
         email: currentUsr.email || '',
@@ -1273,6 +1305,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         deviceName: newSettings.deviceName ?? settings.deviceName,
         deviceType: effectiveType,
         avatarColor: newSettings.avatarColor ?? settings.avatarColor,
+        customAvatarUrl: effectiveAvatar || undefined,
       };
       setUserProfile(updatedProfile);
       try {
@@ -1281,6 +1314,129 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (err) {
         console.error('Failed to sync updated profile to firestore', err);
       }
+    }
+  };
+
+  const syncGoogleProfilePhoto = async (): Promise<string | null> => {
+    try {
+      const res = await signInWithPopup(auth, googleProvider);
+      if (res.user && res.user.photoURL) {
+        const photoUrl = res.user.photoURL;
+        const currentUsr = currentUserRef.current;
+        if (currentUsr) {
+          const updatedUser: AppUser = {
+            ...currentUsr,
+            photoURL: photoUrl,
+          };
+          setCurrentUser(updatedUser);
+          currentUserRef.current = updatedUser;
+          localStorage.setItem('cloudsend_custom_session', JSON.stringify(updatedUser));
+
+          const updatedProf: UserDevice = {
+            ...(userProfile || {
+              uid: currentUsr.uid,
+              displayName: currentUsr.displayName || 'Người dùng',
+              deviceName: settings.deviceName,
+              deviceType: settings.deviceType,
+              avatarColor: settings.avatarColor || '#10B981',
+              createdAt: new Date().toISOString(),
+              email: currentUsr.email || '',
+            }),
+            customAvatarUrl: photoUrl,
+          };
+          setUserProfile(updatedProf);
+          localStorage.setItem('cloudsend_user_profile', JSON.stringify(updatedProf));
+
+          setSettings((prev) => ({ ...prev, customAvatarUrl: photoUrl }));
+
+          await setDoc(doc(db, 'users', currentUsr.uid), {
+            customAvatarUrl: photoUrl,
+          }, { merge: true });
+
+          await updatePresence(currentUsr.uid, updatedProf);
+        }
+        return photoUrl;
+      }
+      return null;
+    } catch (err: any) {
+      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+        return null;
+      }
+      console.warn('Sync Google photo error:', err);
+      throw err;
+    }
+  };
+
+  const linkWithGoogleAccount = async (): Promise<{ email: string; photoURL: string | null } | null> => {
+    try {
+      const res = await signInWithPopup(auth, googleProvider);
+      if (res.user) {
+        const photoUrl = res.user.photoURL;
+        const email = res.user.email || '';
+        const nowIso = new Date().toISOString();
+        const currentUsr = currentUserRef.current;
+        if (currentUsr) {
+          const updatedUser: AppUser = {
+            ...currentUsr,
+            email: email || currentUsr.email,
+            photoURL: photoUrl || currentUsr.photoURL,
+          };
+          setCurrentUser(updatedUser);
+          currentUserRef.current = updatedUser;
+          localStorage.setItem('cloudsend_custom_session', JSON.stringify(updatedUser));
+
+          const updatedProf: UserDevice = {
+            ...(userProfile || {
+              uid: currentUsr.uid,
+              displayName: currentUsr.displayName || 'Người dùng',
+              deviceName: settings.deviceName,
+              deviceType: settings.deviceType,
+              avatarColor: settings.avatarColor || '#10B981',
+              createdAt: nowIso,
+            }),
+            email: email || currentUsr.email || '',
+            linkedEmail: email || currentUsr.email || '',
+            isEmailVerified: true,
+            emailVerifiedAt: nowIso,
+            customAvatarUrl: photoUrl || userProfile?.customAvatarUrl,
+          };
+          setUserProfile(updatedProf);
+          localStorage.setItem('cloudsend_user_profile', JSON.stringify(updatedProf));
+
+          if (photoUrl) {
+            setSettings((prev) => ({ ...prev, customAvatarUrl: photoUrl }));
+          }
+
+          await setDoc(doc(db, 'users', currentUsr.uid), {
+            email: email,
+            linkedEmail: email,
+            isEmailVerified: true,
+            emailVerifiedAt: nowIso,
+            customAvatarUrl: photoUrl || null,
+          }, { merge: true });
+
+          const identifier = userProfile?.username || currentUsr.displayName || '';
+          if (identifier) {
+            const accountKey = await getAccountKey(identifier.trim().toLowerCase());
+            await setDoc(doc(db, 'accounts', accountKey), {
+              email: email,
+              linkedEmail: email,
+              isEmailVerified: true,
+              emailVerifiedAt: nowIso,
+            }, { merge: true }).catch(() => {});
+          }
+
+          await updatePresence(currentUsr.uid, updatedProf);
+        }
+        return { email, photoURL: photoUrl };
+      }
+      return null;
+    } catch (err: any) {
+      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+        return null;
+      }
+      console.warn('Link Google account error:', err);
+      throw err;
     }
   };
 
@@ -1307,6 +1463,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         getLoginSessions,
         logoutSession,
         logoutAllDevices,
+        syncGoogleProfilePhoto,
+        linkWithGoogleAccount,
       }}
     >
       {children}

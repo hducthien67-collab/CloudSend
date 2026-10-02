@@ -74,6 +74,7 @@ export interface SendFileItem {
 
 export const SendView: React.FC = () => {
   const { currentUser, userProfile, settings } = useAuth();
+  const activeAvatarUrl = settings.customAvatarUrl || userProfile?.customAvatarUrl || currentUser?.photoURL;
   const [onlineDevices, setOnlineDevices] = useState<PresenceDevice[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [mode, setMode] = useState<'file' | 'text'>('file');
@@ -472,10 +473,23 @@ export const SendView: React.FC = () => {
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5 min-w-0">
           <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center text-white shrink-0 shadow-md ring-2 ring-emerald-500/20"
+            className="w-12 h-12 rounded-xl flex items-center justify-center text-white shrink-0 shadow-md ring-2 ring-emerald-500/20 overflow-hidden relative"
             style={{ backgroundColor: settings.avatarColor || '#10B981' }}
           >
-            {renderDeviceIcon(settings.deviceType)}
+            {activeAvatarUrl ? (
+              <img 
+                src={activeAvatarUrl} 
+                alt={currentUser?.displayName || 'Avatar'} 
+                className="w-full h-full object-cover" 
+                referrerPolicy="no-referrer"
+                crossOrigin="anonymous"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+            ) : (
+              renderDeviceIcon(settings.deviceType)
+            )}
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
@@ -1023,10 +1037,23 @@ export const SendView: React.FC = () => {
                   <div className="flex items-start gap-3.5">
                     {/* Device Icon Avatar */}
                     <div
-                      className="w-12 h-12 rounded-xl flex items-center justify-center text-white shrink-0 shadow-md group-hover:scale-105 transition-transform"
+                      className="w-12 h-12 rounded-xl flex items-center justify-center text-white shrink-0 shadow-md group-hover:scale-105 transition-transform overflow-hidden relative"
                       style={{ backgroundColor: device.avatarColor || '#10B981' }}
                     >
-                      {renderDeviceIcon(device.deviceType)}
+                      {device.customAvatarUrl ? (
+                        <img 
+                          src={device.customAvatarUrl} 
+                          alt={device.displayName || 'Device'} 
+                          className="w-full h-full object-cover" 
+                          referrerPolicy="no-referrer"
+                          crossOrigin="anonymous"
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        renderDeviceIcon(device.deviceType)
+                      )}
                     </div>
 
                     <div className="flex-1 min-w-0">

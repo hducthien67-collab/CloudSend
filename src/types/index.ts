@@ -10,6 +10,8 @@ export interface UserDevice {
   deviceName: string;
   deviceType: DeviceType;
   avatarColor: string;
+  customAvatarUrl?: string;
+  customDesignData?: string;
   createdAt: string;
   lastSeen?: string;
   status?: 'online' | 'busy' | 'away';
@@ -37,6 +39,7 @@ export interface PresenceDevice {
   deviceName: string;
   deviceType: DeviceType;
   avatarColor?: string;
+  customAvatarUrl?: string;
   status: string;
   lastSeen: string;
   currentRoomId?: string;
@@ -159,6 +162,8 @@ export interface AppSettings {
   customBio?: string;
   cardStyle?: 'glass' | 'glow' | 'minimal' | 'solid';
   customHexColor?: string;
+  customAvatarUrl?: string;
+  customDesignData?: string;
 }
 
 export interface AppUser {

@@ -4,7 +4,6 @@ import fs from 'fs';
 import multer from 'multer';
 import sharp from 'sharp';
 import nodemailer from 'nodemailer';
-import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 
@@ -807,12 +806,18 @@ Trả về kết quả ở định dạng JSON chuẩn:
   });
 
   // Vite middleware in development vs Static SPA in production
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
+  const distIndexHtml = path.join(process.cwd(), 'dist', 'index.html');
+  if (process.env.NODE_ENV !== 'production' && !fs.existsSync(distIndexHtml)) {
+    try {
+      const { createServer: createViteServer } = await import('vite');
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+    } catch (viteErr) {
+      console.warn('Vite dev middleware failed to load, fallback to static serve:', viteErr);
+    }
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));

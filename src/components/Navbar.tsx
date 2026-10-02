@@ -41,8 +41,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   incomingCount = 0,
   unreadMessagesCount = 0,
 }) => {
-  const { currentUser, settings } = useAuth();
+  const { currentUser, settings, userProfile } = useAuth();
   const isDev = isDevUser(currentUser?.email);
+
+  const activeAvatarUrl = settings.customAvatarUrl || userProfile?.customAvatarUrl || currentUser?.photoURL;
 
   const getDeviceIcon = () => {
     switch (settings.deviceType) {
@@ -236,10 +238,23 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div
             onClick={onOpenSettings}
             title={`${currentUser?.displayName || 'Tài khoản'} - Nhấn để xem cài đặt`}
-            className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold cursor-pointer ring-2 ring-emerald-500/40 hover:ring-emerald-400 transition-all shadow-md"
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold cursor-pointer ring-2 ring-emerald-500/40 hover:ring-emerald-400 transition-all shadow-md overflow-hidden relative"
             style={{ backgroundColor: settings.avatarColor }}
           >
-            {(currentUser?.displayName || currentUser?.email || 'U')[0].toUpperCase()}
+            {activeAvatarUrl ? (
+              <img 
+                src={activeAvatarUrl} 
+                alt={currentUser?.displayName || 'Avatar'} 
+                className="w-full h-full object-cover" 
+                referrerPolicy="no-referrer"
+                crossOrigin="anonymous"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+            ) : (
+              (currentUser?.displayName || currentUser?.email || 'U')[0].toUpperCase()
+            )}
           </div>
         </div>
       </div>
