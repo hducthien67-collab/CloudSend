@@ -49,13 +49,17 @@ import {
   Trash2,
   Camera,
   Scale,
-  Flag
+  Flag,
+  Bold,
+  Italic,
+  Code,
+  Wand2
 } from 'lucide-react';
 import { formatFileSize } from '../utils/device';
 import { playSendSound, playReceiveSound, playDestructSound, playShieldAlertSound } from '../utils/sound';
 import { censorProfanity, moderateUploadedImage } from '../utils/moderation';
 import { isDevUser } from '../utils/devModeration';
-import { renderClickableText } from '../utils/textFormat';
+import { renderClickableText, cleanAndFormatUserText, sanitizeDisplayText } from '../utils/textFormat';
 import { 
   uploadFileToServer, 
   generateImageThumbnail, 
@@ -105,9 +109,185 @@ export const ChatRoomView: React.FC = () => {
   const [activeDestructMessage, setActiveDestructMessage] = useState<ChatMessage | null>(null);
   const [showRules, setShowRules] = useState(false);
 
+  // Formatting & anti-glitch text toolbar
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [formatNotice, setFormatNotice] = useState<string | null>(null);
+  const [hasSelection, setHasSelection] = useState(false);
+  const [enterKeyMode, setEnterKeyMode] = useState<'send' | 'newline'>(() => {
+    return (localStorage.getItem('chat_enter_key_mode') as 'send' | 'newline') || 'send';
+  });
+
+  // Check selection in textarea
+  const checkTextSelection = () => {
+    const el = textareaRef.current;
+    if (el && el.selectionStart !== el.selectionEnd && el.selectionEnd > el.selectionStart) {
+      const selected = inputText.substring(el.selectionStart, el.selectionEnd).trim();
+      setHasSelection(selected.length > 0);
+    } else {
+      setHasSelection(false);
+    }
+  };
+
+  // Toggle or apply formatting on selection / cursor (supports Ctrl+B, Ctrl+I, Ctrl+E)
+  const toggleFormatting = (type: 'bold' | 'italic' | 'code' | 'codeblock') => {
+    const el = textareaRef.current;
+    if (!el) {
+      if (type === 'bold') setInputText(prev => `${prev}**văn bản đậm**`);
+      else if (type === 'italic') setInputText(prev => `${prev}*văn bản nghiêng*`);
+      else if (type === 'code') setInputText(prev => `${prev}\`mã\``);
+      else if (type === 'codeblock') setInputText(prev => `${prev}\`\`\`\nconsole.log("hello");\n\`\`\``);
+      return;
+    }
+
+    const start = el.selectionStart || 0;
+    const end = el.selectionEnd || 0;
+    const selected = inputText.substring(start, end);
+
+    let prefix = '**';
+    let suffix = '**';
+    let defaultText = 'văn bản đậm';
+
+    if (type === 'italic') {
+      prefix = '*';
+      suffix = '*';
+      defaultText = 'văn bản nghiêng';
+    } else if (type === 'code') {
+      prefix = '`';
+      suffix = '`';
+      defaultText = 'mã';
+    } else if (type === 'codeblock') {
+      prefix = '```\n';
+      suffix = '\n```';
+      defaultText = 'console.log("hello");';
+    }
+
+    // If text is selected, check if it's already wrapped
+    if (start !== end && selected) {
+      if (type === 'bold' && selected.startsWith('**') && selected.endsWith('**') && selected.length >= 4) {
+        // Unwrap bold
+        const unwrapped = selected.slice(2, -2);
+        const nextText = inputText.substring(0, start) + unwrapped + inputText.substring(end);
+        setInputText(nextText);
+        setTimeout(() => {
+          el.focus();
+          el.setSelectionRange(start, start + unwrapped.length);
+          checkTextSelection();
+        }, 0);
+        return;
+      }
+
+      if (type === 'italic' && selected.startsWith('*') && selected.endsWith('*') && !selected.startsWith('**') && selected.length >= 2) {
+        // Unwrap italic
+        const unwrapped = selected.slice(1, -1);
+        const nextText = inputText.substring(0, start) + unwrapped + inputText.substring(end);
+        setInputText(nextText);
+        setTimeout(() => {
+          el.focus();
+          el.setSelectionRange(start, start + unwrapped.length);
+          checkTextSelection();
+        }, 0);
+        return;
+      }
+
+      if (type === 'code' && selected.startsWith('`') && selected.endsWith('`') && selected.length >= 2) {
+        // Unwrap code
+        const unwrapped = selected.slice(1, -1);
+        const nextText = inputText.substring(0, start) + unwrapped + inputText.substring(end);
+        setInputText(nextText);
+        setTimeout(() => {
+          el.focus();
+          el.setSelectionRange(start, start + unwrapped.length);
+          checkTextSelection();
+        }, 0);
+        return;
+      }
+
+      // Wrap selected text
+      const wrapped = `${prefix}${selected}${suffix}`;
+      const nextText = inputText.substring(0, start) + wrapped + inputText.substring(end);
+      setInputText(nextText);
+      setTimeout(() => {
+        el.focus();
+        el.setSelectionRange(start, start + wrapped.length);
+        checkTextSelection();
+      }, 0);
+    } else {
+      // No text selected: insert wrapper and place cursor inside
+      const placeholder = `${prefix}${defaultText}${suffix}`;
+      const nextText = inputText.substring(0, start) + placeholder + inputText.substring(end);
+      setInputText(nextText);
+      setTimeout(() => {
+        el.focus();
+        el.setSelectionRange(start + prefix.length, start + prefix.length + defaultText.length);
+        checkTextSelection();
+      }, 0);
+    }
+  };
+
+  // Keyboard shortcut listener for textarea
+  const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // 1. Enter key handling based on user mode
+    if (e.key === 'Enter') {
+      if (enterKeyMode === 'send') {
+        if (!e.shiftKey && !e.ctrlKey) {
+          e.preventDefault();
+          handleSendMessage();
+          return;
+        }
+      } else {
+        // Mode 'newline': Enter directly creates a newline without sending; Ctrl+Enter or clicking button sends
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          handleSendMessage();
+          return;
+        }
+      }
+    }
+
+    const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+
+    // 2. Ctrl + B / Cmd + B -> In đậm (Bold)
+    if (isCtrlOrCmd && (e.key === 'b' || e.key === 'B')) {
+      e.preventDefault();
+      toggleFormatting('bold');
+      setFormatNotice('✨ Đã in đậm văn bản (Ctrl+B)');
+      setTimeout(() => setFormatNotice(null), 2500);
+      return;
+    }
+
+    // 3. Ctrl + I / Cmd + I -> In nghiêng (Italic)
+    if (isCtrlOrCmd && (e.key === 'i' || e.key === 'I')) {
+      e.preventDefault();
+      toggleFormatting('italic');
+      setFormatNotice('✨ Đã in nghiêng văn bản (Ctrl+I)');
+      setTimeout(() => setFormatNotice(null), 2500);
+      return;
+    }
+
+    // 4. Ctrl + E / Cmd + E or Ctrl + ` -> Inline Code
+    if (isCtrlOrCmd && (e.key === 'e' || e.key === 'E' || e.key === '`')) {
+      e.preventDefault();
+      toggleFormatting('code');
+      setFormatNotice('✨ Đã định dạng mã (Ctrl+E)');
+      setTimeout(() => setFormatNotice(null), 2500);
+      return;
+    }
+  };
+
+  // Smart Clean / Format Text (Làm gọn văn bản - chống văn bản rác, khoảng trắng thừa, BiDi rác, layout vỡ)
+  const handleCleanInputText = () => {
+    if (!inputText.trim()) return;
+    const cleaned = cleanAndFormatUserText(inputText);
+    setInputText(cleaned);
+    setFormatNotice('✨ Đã tự động làm gọn văn bản & loại bỏ ký tự lỗi!');
+    setTimeout(() => setFormatNotice(null), 3500);
+  };
+
   // Multiple file attachments in chat
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [isCompressing, setIsCompressing] = useState(false);
+  const [isSubmittingMessage, setIsSubmittingMessage] = useState(false);
+  const sendTimestampsRef = useRef<number[]>([]);
   const [uploadProgressText, setUploadProgressText] = useState<string | null>(null);
   const [isDraggingOverChat, setIsDraggingOverChat] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -236,13 +416,18 @@ export const ChatRoomView: React.FC = () => {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // Helper to extract a reliable numeric timestamp from a message
+  // Helper to extract a reliable numeric timestamp from a message (prioritizes true atomic server time)
   const getMessageTime = (msg: Partial<ChatMessage>): number => {
+    // 1. Authoritative Firestore server timestamp (immune to client clock drifts between school PC and phone)
+    if (msg.serverTimestamp && typeof (msg.serverTimestamp as any).toMillis === 'function') {
+      return (msg.serverTimestamp as any).toMillis();
+    }
+    if (msg.serverTimestamp && typeof (msg.serverTimestamp as any).seconds === 'number') {
+      return (msg.serverTimestamp as any).seconds * 1000;
+    }
+    // 2. Client fallback
     if (typeof msg.timestamp === 'number' && msg.timestamp > 0) {
       return msg.timestamp;
-    }
-    if (msg.serverTimestamp && typeof msg.serverTimestamp.toMillis === 'function') {
-      return msg.serverTimestamp.toMillis();
     }
     if (msg.createdAt) {
       const parsed = new Date(msg.createdAt).getTime();
@@ -264,7 +449,7 @@ export const ChatRoomView: React.FC = () => {
       let hasNewExternalMsg = false;
 
       snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
+        const data = docSnap.data({ serverTimestamps: 'estimate' });
         const msg = { id: docSnap.id, ...data } as ChatMessage;
         msgs.push(msg);
         if (msg.senderId !== currentUser.uid && !initialLoadRef.current) {
@@ -424,10 +609,21 @@ export const ChatRoomView: React.FC = () => {
     };
   };
 
-  // Convert and upload heavy non-image file
+  // Convert and upload heavy non-image file with security extension checks
   const processGeneralFile = async (file: File): Promise<ChatAttachment | null> => {
+    // Security check: block dangerous executables, scripts, and installers
+    const DANGEROUS_EXTS = ['.exe', '.bat', '.cmd', '.sh', '.vbs', '.msi', '.scr', '.pif', '.com', '.reg', '.jar', '.apk'];
+    const lowerName = file.name.toLowerCase();
+    if (DANGEROUS_EXTS.some(ext => lowerName.endsWith(ext))) {
+      playShieldAlertSound();
+      setModerationWarning(`🚫 Tệp "${file.name}" bị chặn vì chứa định dạng thực thi/script có nguy cơ bảo mật.`);
+      setTimeout(() => setModerationWarning(null), 7000);
+      return null;
+    }
+
     if (file.size > MAX_FILE_SIZE) {
-      alert(`Tệp "${file.name}" (${formatFileSize(file.size)}) vượt quá giới hạn tối đa ${MAX_FILE_SIZE_LABEL}.`);
+      setModerationWarning(`⚠️ Tệp "${file.name}" (${formatFileSize(file.size)}) vượt quá giới hạn tối đa ${MAX_FILE_SIZE_LABEL}.`);
+      setTimeout(() => setModerationWarning(null), 5000);
       return null;
     }
 
@@ -445,7 +641,8 @@ export const ChatRoomView: React.FC = () => {
         url: uploaded.url
       };
     } catch (err: any) {
-      alert(err?.message || 'Lỗi khi tải tệp lên máy chủ.');
+      setModerationWarning(err?.message || 'Lỗi khi tải tệp lên máy chủ.');
+      setTimeout(() => setModerationWarning(null), 5000);
       return null;
     }
   };
@@ -560,11 +757,33 @@ export const ChatRoomView: React.FC = () => {
   // Send message
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!currentUser) return;
+    if (!currentUser || isSubmittingMessage) return;
     if (!inputText.trim() && attachments.length === 0) return;
 
-    // Filter profanity / vulgar language: replaces straight vulgar words with ***
-    const { cleanText, hasProfanity, detectedList } = censorProfanity(inputText.trim());
+    // Security & Anti-Flood: Max 4 messages per 3 seconds
+    const now = Date.now();
+    sendTimestampsRef.current = sendTimestampsRef.current.filter(t => now - t < 3000);
+    if (sendTimestampsRef.current.length >= 4) {
+      setModerationWarning('⚠️ Bạn đang gửi tin nhắn quá nhanh. Vui lòng chậm lại 2 giây để tránh spam.');
+      setTimeout(() => setModerationWarning(null), 4000);
+      return;
+    }
+    sendTimestampsRef.current.push(now);
+
+    // Payload length limit: max 5000 chars
+    if (inputText.length > 5000) {
+      setModerationWarning('⚠️ Độ dài tin nhắn vượt quá giới hạn 5,000 ký tự cho phép.');
+      setTimeout(() => setModerationWarning(null), 4000);
+      return;
+    }
+
+    setIsSubmittingMessage(true);
+
+    // Anti-glitch / anti-zalgo / anti-BiDi defense: sanitize dangerous text control codes and excessive newlines
+    const sanitizedInput = sanitizeDisplayText(inputText);
+
+    // Filter profanity / vulgar language: preserves spaces and replaces straight vulgar words with ***
+    const { cleanText, hasProfanity, detectedList } = censorProfanity(sanitizedInput);
     const textToSend = cleanText;
 
     if (hasProfanity) {
@@ -603,7 +822,7 @@ export const ChatRoomView: React.FC = () => {
     const isSelfDestruct = selfDestructMode !== 'off' && attachmentsToSend.length > 0;
     const selfDestructDuration = selfDestructMode === '10s' ? 10 : selfDestructMode === '30s' ? 30 : 0;
 
-    const rawTextOriginal = inputText.trim();
+    const rawTextOriginal = inputText;
 
     // Reset input immediately for responsive feel
     setInputText('');
@@ -612,7 +831,13 @@ export const ChatRoomView: React.FC = () => {
     setShowSelfDestructMenu(false);
 
     try {
-      const now = new Date();
+      // FIX ORDERING BUG: Protect against school computer clock skew.
+      // If user's school computer clock is lagging behind other computers,
+      // enforce that this message's timestamp is strictly newer than any message already received!
+      const latestSeenTime = messages.reduce((max, m) => Math.max(max, getMessageTime(m)), 0);
+      const effectiveTimeMs = Math.max(Date.now(), latestSeenTime + 1000);
+      const effectiveIso = new Date(effectiveTimeMs).toISOString();
+
       const isDev = isDevUser(currentUser.email);
       const messagePayload: any = {
         roomId: activeRoomId,
@@ -621,11 +846,11 @@ export const ChatRoomView: React.FC = () => {
         senderEmail: currentUser.email || userProfile?.email || '',
         senderDevice: settings.deviceName,
         text: textToSend,
-        rawText: rawTextOriginal, // Preserved raw original text for Dev Cloud audit
+        rawText: rawTextOriginal, // Preserved raw original text with full spaces for Dev Cloud audit
         hasProfanity: hasProfanity,
         detectedProfanity: detectedList,
-        createdAt: now.toISOString(),
-        timestamp: now.getTime(),
+        createdAt: effectiveIso,
+        timestamp: effectiveTimeMs,
         serverTimestamp: serverTimestamp(),
         isDevMessage: isDev,
       };
@@ -660,7 +885,7 @@ export const ChatRoomView: React.FC = () => {
         await setDoc(doc(db, 'rooms', activeRoomId, 'audit_messages', docRef.id), {
           ...messagePayload,
           id: docRef.id,
-          archivedAt: now.toISOString(),
+          archivedAt: effectiveIso,
           isDeletedBySender: false
         });
       } catch (err) {
@@ -671,8 +896,12 @@ export const ChatRoomView: React.FC = () => {
         playSendSound();
       }
       scrollToBottom(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Send message error:', err);
+      setModerationWarning(err?.message || 'Lỗi khi gửi tin nhắn. Vui lòng thử lại.');
+      setTimeout(() => setModerationWarning(null), 4000);
+    } finally {
+      setIsSubmittingMessage(false);
     }
   };
 
@@ -770,10 +999,25 @@ export const ChatRoomView: React.FC = () => {
   const handleJoinByCode = async (e: React.FormEvent) => {
     e.preventDefault();
     setJoinError(null);
-    const code = joinCodeInput.trim().toUpperCase();
+    const code = joinCodeInput.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
     if (!code) return;
 
-    const found = rooms.find(r => r.code?.toUpperCase() === code || r.id === code);
+    let found = rooms.find(r => r.code?.toUpperCase() === code || r.id === code);
+    
+    // Fallback: query Firestore server directly if not yet in local state
+    if (!found) {
+      try {
+        const qCode = query(collection(db, 'rooms'), where('code', '==', code));
+        const snap = await getDocs(qCode);
+        if (!snap.empty) {
+          const docSnap = snap.docs[0];
+          found = { id: docSnap.id, ...docSnap.data() } as ChatRoom;
+        }
+      } catch (e) {
+        console.warn('Room code direct query error:', e);
+      }
+    }
+
     if (found) {
       // Khi người nào đó nhập trúng ID và vô nhóm thì tự động là thành viên
       const existingMembers = found.members || [];
@@ -1296,12 +1540,12 @@ export const ChatRoomView: React.FC = () => {
 
                     {/* Text Message */}
                     {msg.text && (
-                      <p 
-                        className="text-xs sm:text-[13px] leading-snug whitespace-pre-wrap break-words chat-message-text select-text cursor-text"
+                      <div 
+                        className="text-xs sm:text-[13px] leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] max-w-full chat-message-text select-text cursor-text"
                         data-chat-message="true"
                       >
                         {renderClickableText(censorProfanity(msg.text).cleanText, isMe)}
-                      </p>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1439,75 +1683,165 @@ export const ChatRoomView: React.FC = () => {
             </div>
           )}
 
-          <div className="p-3 sm:p-4">
-            <form onSubmit={handleSendMessage} className="flex items-center gap-2 sm:gap-3">
-            {/* Hidden general file input (multiple enabled) */}
-            <input
-              type="file"
-              multiple
-              ref={fileInputRef}
-              onChange={(e) => e.target.files && processAndAttachFiles(e.target.files)}
-              className="hidden"
-            />
-            
-            {/* Hidden dedicated image input (supports phone photos, iPhone HEIC/HEIF, RAW) */}
-            <input
-              type="file"
-              multiple
-              accept="image/*,.heic,.heif,.dng,.raw"
-              ref={imageInputRef}
-              onChange={(e) => e.target.files && processAndAttachFiles(e.target.files)}
-              className="hidden"
-            />
+          <div className="p-3 sm:p-4 space-y-2">
+            {/* Quick Text Formatting Toolbar & Selection Helper */}
+            <div className="flex items-center justify-between gap-1.5 flex-wrap px-1">
+              <div className="flex items-center gap-1 flex-wrap">
+                {/* Bold */}
+                <button
+                  type="button"
+                  onClick={() => toggleFormatting('bold')}
+                  title="In đậm (Bôi đen + Bấm hoặc nhấn Ctrl + B)"
+                  className="px-2.5 py-1 rounded-lg bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors"
+                >
+                  <Bold className="w-3.5 h-3.5" />
+                  <span>Đậm <kbd className="hidden sm:inline-block px-1 py-0.2 bg-black/40 border border-white/10 rounded text-[9px] text-slate-400 font-sans">Ctrl+B</kbd></span>
+                </button>
 
-            {/* Quick Image Picker Button */}
-            <button
-              id="attach-image-btn"
-              type="button"
-              onClick={() => imageInputRef.current?.click()}
-              title="Chọn một hoặc nhiều ảnh để gửi (hỗ trợ tới 250MB hoặc kéo thả / dán Ctrl+V)"
-              className="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-emerald-400 border border-slate-700 transition-colors shrink-0"
-            >
-              <ImageIcon className="w-5 h-5" />
-            </button>
+                {/* Italic */}
+                <button
+                  type="button"
+                  onClick={() => toggleFormatting('italic')}
+                  title="In nghiêng (Bôi đen + Bấm hoặc nhấn Ctrl + I)"
+                  className="px-2.5 py-1 rounded-lg bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700 text-xs italic flex items-center gap-1.5 transition-colors"
+                >
+                  <Italic className="w-3.5 h-3.5" />
+                  <span>Nghiêng <kbd className="hidden sm:inline-block px-1 py-0.2 bg-black/40 border border-white/10 rounded text-[9px] text-slate-400 font-sans">Ctrl+I</kbd></span>
+                </button>
+              </div>
 
-            {/* General File Attachment Button */}
-            <button
-              id="attach-file-btn"
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              title="Đính kèm tệp tin dung lượng lớn lên tới 250MB (tài liệu, video, ZIP, phần mềm...)"
-              className="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors shrink-0"
-            >
-              <Paperclip className="w-5 h-5" />
-            </button>
+              {/* Smart Format / Clean Text Button */}
+              {inputText.trim().length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleCleanInputText}
+                  title="Tự động xóa khoảng trắng rác, dòng trống thừa, ký tự ẩn và căn chỉnh văn bản gọn gàng không bị hiện lung tung"
+                  className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm active:scale-95 ml-auto"
+                >
+                  <Wand2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Làm gọn văn bản</span>
+                </button>
+              )}
+            </div>
 
-            {/* Text Input with Paste listener */}
-            <input
-              id="chat-message-input"
-              type="text"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onPaste={handleChatPaste}
-              placeholder={isCompressing ? (uploadProgressText || "Đang tải & xử lý tệp tin...") : "Nhập tin nhắn... (hoặc dán Ctrl+V / kéo thả tệp, video, ảnh tới 250MB)"}
-              disabled={isCompressing}
-              className="smooth-input flex-1 px-4 py-3 bg-slate-950/80 border border-slate-800 rounded-xl text-sm sm:text-base text-white placeholder-slate-500 focus:outline-none transition-all duration-200"
-            />
+            {/* Selection Quick Action Bubble */}
+            {hasSelection && (
+              <div className="text-xs text-emerald-300 bg-slate-900/95 border border-emerald-500/40 rounded-xl px-3 py-1.5 flex items-center justify-between gap-2 shadow-lg animate-in fade-in slide-in-from-bottom-1 duration-150">
+                <span className="flex items-center gap-1.5 text-[11px] sm:text-xs">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Đang bôi đen chữ: Bấm <strong>Ctrl+B</strong> để Đậm, <strong>Ctrl+I</strong> để Nghiêng</span>
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => toggleFormatting('bold')}
+                    className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px]"
+                  >
+                    B Đậm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleFormatting('italic')}
+                    className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white italic text-[11px]"
+                  >
+                    I Nghiêng
+                  </button>
+                </div>
+              </div>
+            )}
 
-            {/* Send Button */}
-            <button
-              id="send-message-btn"
-              type="submit"
-              disabled={(!inputText.trim() && attachments.length === 0) || isCompressing}
-              className="p-3 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-semibold text-sm shadow-md shadow-emerald-600/20 transition-all active:scale-95 flex items-center gap-2 shrink-0"
-            >
-              <Send className="w-4 h-4" />
-              <span className="hidden sm:inline">Gửi</span>
-            </button>
-          </form>
+            {/* Format Notification Toast */}
+            {formatNotice && (
+              <div className="text-xs text-emerald-300 bg-emerald-950/60 border border-emerald-800/80 rounded-xl px-3 py-1.5 flex items-center gap-2 animate-in fade-in duration-150">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>{formatNotice}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSendMessage} className="flex items-end gap-2 sm:gap-3">
+              {/* Hidden general file input (multiple enabled) */}
+              <input
+                type="file"
+                multiple
+                ref={fileInputRef}
+                onChange={(e) => e.target.files && processAndAttachFiles(e.target.files)}
+                className="hidden"
+              />
+              
+              {/* Hidden dedicated image input (supports phone photos, iPhone HEIC/HEIF, RAW) */}
+              <input
+                type="file"
+                multiple
+                accept="image/*,.heic,.heif,.dng,.raw"
+                ref={imageInputRef}
+                onChange={(e) => e.target.files && processAndAttachFiles(e.target.files)}
+                className="hidden"
+              />
+
+              {/* Quick Image Picker Button */}
+              <button
+                id="attach-image-btn"
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                title="Chọn một hoặc nhiều ảnh để gửi (hỗ trợ tới 250MB hoặc kéo thả / dán Ctrl+V)"
+                className="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-emerald-400 border border-slate-700 transition-colors shrink-0"
+              >
+                <ImageIcon className="w-5 h-5" />
+              </button>
+
+              {/* General File Attachment Button */}
+              <button
+                id="attach-file-btn"
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                title="Đính kèm tệp tin dung lượng lớn lên tới 250MB (tài liệu, video, ZIP, phần mềm...)"
+                className="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors shrink-0"
+              >
+                <Paperclip className="w-5 h-5" />
+              </button>
+
+              {/* Smart Compact Textarea Input with Selection, Paste & Keydown shortcuts listener */}
+              <div className="flex-1 relative min-w-0">
+                <textarea
+                  id="chat-message-input"
+                  ref={textareaRef}
+                  value={inputText}
+                  rows={1}
+                  onChange={(e) => {
+                    setInputText(e.target.value);
+                    checkTextSelection();
+                    if (!e.target.value) {
+                      e.target.style.height = '44px';
+                    } else {
+                      e.target.style.height = 'auto';
+                      e.target.style.height = `${Math.min(Math.max(e.target.scrollHeight, 44), 72)}px`;
+                    }
+                  }}
+                  onKeyDown={handleTextareaKeyDown}
+                  onSelect={checkTextSelection}
+                  onKeyUp={checkTextSelection}
+                  onMouseUp={checkTextSelection}
+                  onPaste={handleChatPaste}
+                  placeholder={isCompressing ? (uploadProgressText || "Đang tải & xử lý tệp tin...") : "Nhập tin nhắn... (Bôi đen & Ctrl+B để in đậm, Ctrl+I để in nghiêng, Enter gửi)"}
+                  disabled={isCompressing}
+                  className="smooth-input w-full px-4 py-2.5 bg-slate-950/80 border border-slate-800 focus:border-emerald-500/80 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none transition-all duration-150 resize-none max-h-20 min-h-[44px] leading-relaxed [overflow-wrap:anywhere]"
+                />
+              </div>
+
+              {/* Send Button */}
+              <button
+                id="send-message-btn"
+                type="submit"
+                disabled={(!inputText.trim() && attachments.length === 0) || isCompressing}
+                className="p-3 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-semibold text-sm shadow-md shadow-emerald-600/20 transition-all active:scale-95 flex items-center gap-2 shrink-0 h-[46px]"
+              >
+                <Send className="w-4 h-4" />
+                <span className="hidden sm:inline">Gửi</span>
+              </button>
+            </form>
+          </div>
         </div>
       </div>
-    </div>
 
       {/* Create Room Modal */}
       {showCreateModal && (

@@ -321,10 +321,10 @@ export async function uploadFileToServer(
     } catch (retryErr: any) {
       const finalMsg = retryErr?.message || '';
       if (finalMsg === 'NETWORK_ERROR') {
-        throw new Error('Đường truyền mạng không ổn định hoặc proxy chặn kết nối. Vui lòng thử lại với tệp nhẹ hơn hoặc kiểm tra kết nối mạng.');
+        throw new Error('Đường truyền mạng không ổn định hoặc proxy chặn kết nối. Vui lòng kiểm tra lại mạng hoặc thử tệp nhẹ hơn.');
       }
       if (finalMsg === 'HTML_RESPONSE' || finalMsg === 'INVALID_JSON') {
-        throw new Error('Máy chủ đang khởi động lại hoặc proxy tạm ngắt. Vui lòng thử lại sau giây lát.');
+        throw new Error('Máy chủ Render đang khởi động lại từ chế độ ngủ (mất khoảng 30-50 giây trên gói Free). Vui lòng đợi một chút rồi bấm thử lại!');
       }
       throw retryErr;
     }

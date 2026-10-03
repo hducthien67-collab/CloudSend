@@ -35,6 +35,8 @@ export interface EmailVerificationRecord {
 
 export interface PresenceDevice {
   uid: string;
+  deviceId?: string;
+  connectCode?: string;
   displayName: string;
   deviceName: string;
   deviceType: DeviceType;
@@ -42,6 +44,8 @@ export interface PresenceDevice {
   customAvatarUrl?: string;
   status: string;
   lastSeen: string;
+  lastSeenMs?: number;
+  lastSeenServer?: any;
   currentRoomId?: string;
 }
 

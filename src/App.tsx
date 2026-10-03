@@ -16,9 +16,11 @@ import { DevCloudConsoleModal } from './components/DevCloudConsoleModal';
 import { DevDatastorePage } from './components/DevDatastorePage';
 import { RulesModal } from './components/RulesModal';
 import { db } from './firebase/config';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { Send, Loader2, ShieldAlert, Database } from 'lucide-react';
+import { collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
+import { Send, Loader2, ShieldAlert, Database, MessageSquare, X, Download, Check } from 'lucide-react';
 import { isDevUser } from './utils/devModeration';
+import { playReceiveSound } from './utils/sound';
+import { formatFileSize } from './utils/device';
 
 function MainApp() {
   const { currentUser, loading, settings, verifyEmailCodeAndLink } = useAuth();
@@ -28,6 +30,59 @@ function MainApp() {
   const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [isMandatoryRules, setIsMandatoryRules] = useState(false);
   const [incomingCount, setIncomingCount] = useState(0);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+  const [chatNotification, setChatNotification] = useState<{ id: string; senderName: string; text: string } | null>(null);
+  const [incomingTransferNotice, setIncomingTransferNotice] = useState<{
+    id: string;
+    senderName: string;
+    senderDevice: string;
+    fileName?: string;
+    fileSize?: number;
+    textContent?: string;
+  } | null>(null);
+
+  // Global Real-time Unread Message Tracking for Public Lounge
+  useEffect(() => {
+    if (!currentUser) return;
+    const sessionStartTime = Date.now();
+    const messagesRef = collection(db, 'rooms', 'public-relay-lounge', 'messages');
+    const q = query(messagesRef, orderBy('createdAt', 'desc'), limit(1));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const msg = change.doc.data();
+          const msgTime = msg.timestamp || (msg.createdAt ? new Date(msg.createdAt).getTime() : 0);
+          if (msgTime > sessionStartTime && msg.senderId !== currentUser.uid) {
+            if (activeTab !== 'chat') {
+              setUnreadMessagesCount((prev) => prev + 1);
+              if (settings?.soundEnabled) {
+                playReceiveSound();
+              }
+              const previewText = msg.text || (msg.attachments?.length ? `Đã gửi ${msg.attachments.length} tệp đính kèm` : 'Đã gửi một tin nhắn mới');
+              setChatNotification({
+                id: change.doc.id,
+                senderName: msg.senderName || 'Bạn bè',
+                text: previewText
+              });
+            }
+          }
+        }
+      });
+    }, (err) => {
+      console.warn('Lounge messages listener notice:', err);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser, activeTab, settings?.soundEnabled]);
+
+  // When user switches to chat, clear unread count and notification banner
+  useEffect(() => {
+    if (activeTab === 'chat') {
+      setUnreadMessagesCount(0);
+      setChatNotification(null);
+    }
+  }, [activeTab]);
 
   // Auto-verify when user clicks the link from their Gmail inbox
   useEffect(() => {
@@ -161,9 +216,10 @@ function MainApp() {
     };
   }, []);
 
-  // Monitor pending incoming transfers for badge
+  // Monitor pending incoming transfers for badge & instant floating alert
   useEffect(() => {
     if (!currentUser) return;
+    const sessionStartTime = Date.now();
     const q = query(
       collection(db, 'transfers'),
       where('receiverId', '==', currentUser.uid),
@@ -171,11 +227,39 @@ function MainApp() {
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setIncomingCount(snapshot.size);
+
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const data = change.doc.data();
+          const transferTime = data.createdAt ? new Date(data.createdAt).getTime() : Date.now();
+          // Alert if received recently
+          if (transferTime > sessionStartTime - 60000 && activeTab !== 'receive') {
+            if (settings?.soundEnabled) {
+              playReceiveSound();
+            }
+            setIncomingTransferNotice({
+              id: change.doc.id,
+              senderName: data.senderName || 'Người dùng',
+              senderDevice: data.senderDevice || 'Thiết bị',
+              fileName: data.fileName,
+              fileSize: data.fileSize,
+              textContent: data.textContent,
+            });
+          }
+        }
+      });
     }, (err) => {
       console.warn('Pending transfers count notice:', err);
     });
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, activeTab, settings?.soundEnabled]);
+
+  // When user switches to receive tab, clear transfer notification banner
+  useEffect(() => {
+    if (activeTab === 'receive') {
+      setIncomingTransferNotice(null);
+    }
+  }, [activeTab]);
 
   if (loading) {
     return (
@@ -260,7 +344,94 @@ function MainApp() {
           setIsDatastorePage(true);
         }}
         incomingCount={incomingCount}
+        unreadMessagesCount={unreadMessagesCount}
       />
+
+      {/* Global Floating Incoming Transfer Notification Banner */}
+      {incomingTransferNotice && activeTab !== 'receive' && (
+        <div className="fixed top-20 left-4 right-4 sm:left-auto sm:right-6 z-50 max-w-sm w-full bg-slate-900/95 border-2 border-emerald-500/60 rounded-2xl p-4 shadow-2xl backdrop-blur-md animate-in slide-in-from-top-3 fade-in duration-200 flex flex-col gap-3">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/40">
+              <Download className="w-5 h-5 animate-bounce" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold text-emerald-300 truncate">
+                  {incomingTransferNotice.senderName} ({incomingTransferNotice.senderDevice}):
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIncomingTransferNotice(null)}
+                  className="text-slate-400 hover:text-white p-0.5 rounded-lg cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <p className="text-xs text-white font-medium truncate mt-0.5">
+                {incomingTransferNotice.fileName 
+                  ? `${incomingTransferNotice.fileName} ${incomingTransferNotice.fileSize ? `(${formatFileSize(incomingTransferNotice.fileSize)})` : ''}`
+                  : incomingTransferNotice.textContent || 'Đã gửi một tệp tin'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('receive');
+                setIncomingTransferNotice(null);
+              }}
+              className="flex-1 py-2 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>Nhận tệp ngay →</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIncomingTransferNotice(null)}
+              className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-all cursor-pointer"
+            >
+              Để sau
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Global Floating Chat Notification Banner */}
+      {chatNotification && activeTab !== 'chat' && (
+        <div className="fixed top-20 right-4 sm:right-6 z-50 max-w-sm w-full bg-slate-900/95 border border-emerald-500/40 rounded-2xl p-3.5 shadow-2xl backdrop-blur-md animate-in slide-in-from-top-3 fade-in duration-200 flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+            <MessageSquare className="w-5 h-5 animate-bounce" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-bold text-emerald-300 truncate">
+                {chatNotification.senderName} vừa nhắn:
+              </span>
+              <button
+                type="button"
+                onClick={() => setChatNotification(null)}
+                className="text-slate-400 hover:text-white p-0.5 rounded-lg"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-200 truncate mt-0.5 font-medium">
+              {chatNotification.text}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('chat');
+                setChatNotification(null);
+              }}
+              className="mt-2 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 cursor-pointer"
+            >
+              <span>Mở phòng chat xem ngay →</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area: Nhận diện Tab đang sử dụng, chỉ kích hoạt Tab hiện tại và dừng các tab khác để chống giật lag */}
       <main className="flex-1 min-h-0 w-full flex flex-col relative overflow-hidden">

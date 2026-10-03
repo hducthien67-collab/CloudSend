@@ -711,7 +711,7 @@ Trả về kết quả ở định dạng JSON chuẩn:
           <tr>
             <td style="padding: 20px 30px; background-color: #020617; border-top: 1px solid #1e293b; text-align: center;">
               <p style="margin: 0; font-size: 11px; color: #64748b;">
-                Email được gửi tự động từ hệ thống CloudSend High-Speed Relay Network.
+                Email được gửi tự động từ hệ thống CloudSend High-Speed Relay Network • <a href="https://cloudsend-bw7z.onrender.com" style="color: #34d399; text-decoration: none;">cloudsend-bw7z.onrender.com</a>
               </p>
             </td>
           </tr>
@@ -806,8 +806,7 @@ Trả về kết quả ở định dạng JSON chuẩn:
   });
 
   // Vite middleware in development vs Static SPA in production
-  const distIndexHtml = path.join(process.cwd(), 'dist', 'index.html');
-  if (process.env.NODE_ENV !== 'production' && !fs.existsSync(distIndexHtml)) {
+  if (process.env.NODE_ENV !== 'production') {
     try {
       const { createServer: createViteServer } = await import('vite');
       const vite = await createViteServer({
@@ -820,9 +819,19 @@ Trả về kết quả ở định dạng JSON chuẩn:
     }
   } else {
     const distPath = path.join(process.cwd(), 'dist');
+    const distIndex = path.join(distPath, 'index.html');
     app.use(express.static(distPath));
     app.get('*', (_req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      if (fs.existsSync(distIndex)) {
+        res.sendFile(distIndex);
+      } else {
+        const rootIndex = path.join(process.cwd(), 'index.html');
+        if (fs.existsSync(rootIndex)) {
+          res.sendFile(rootIndex);
+        } else {
+          res.status(500).send('Ứng dụng chưa được biên dịch. Vui lòng chạy npm run build.');
+        }
+      }
     });
   }
 

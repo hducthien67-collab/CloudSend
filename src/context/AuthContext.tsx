@@ -14,7 +14,8 @@ import {
   query,
   where,
   getDocs,
-  onSnapshot
+  onSnapshot,
+  serverTimestamp
 } from 'firebase/firestore';
 import { auth, db, googleProvider, handleFirestoreError, OperationType } from '../firebase/config';
 import { UserDevice, DeviceType, AppSettings, AppUser, LoginSession, EmailVerificationRecord } from '../types';
@@ -72,9 +73,20 @@ interface AuthContextType {
   logoutAllDevices: () => Promise<void>;
   syncGoogleProfilePhoto: () => Promise<string | null>;
   linkWithGoogleAccount: () => Promise<{ email: string; photoURL: string | null } | null>;
+  updatePresence: (uid?: string, profile?: Partial<UserDevice>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export const getClientDeviceId = (): string => {
+  if (typeof window === 'undefined') return 'server_node';
+  let id = localStorage.getItem('cloudsend_client_device_id');
+  if (!id) {
+    id = 'dev_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+    localStorage.setItem('cloudsend_client_device_id', id);
+  }
+  return id;
+};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Restore session synchronously from localStorage to prevent UI flashing or logout on F5
@@ -193,15 +205,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [settings]);
 
   // Handle Presence Heartbeat in Firestore using latest settings & real detected hardware
-  const updatePresence = async (uid: string, profile?: Partial<UserDevice>) => {
+  const updatePresence = async (uid?: string, profile?: Partial<UserDevice>) => {
     try {
+      const targetUid = uid || currentUserRef.current?.uid;
+      if (!targetUid) return;
       const currentSettings = settingsRef.current;
       const currentHwType = currentSettings.deviceType || (isSmartTv() ? 'tv' : detectDeviceType());
       const currentUsr = currentUserRef.current;
       const avatarImg = currentSettings.customAvatarUrl || profile?.customAvatarUrl || currentUsr?.photoURL;
-      const presenceRef = doc(db, 'presence', uid);
+      const deviceId = getClientDeviceId();
+      const connectCode = deviceId.replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase();
+      const presenceKey = `${targetUid}_${deviceId}`;
+      const presenceRef = doc(db, 'presence', presenceKey);
       await setDoc(presenceRef, {
-        uid,
+        uid: targetUid,
+        deviceId,
+        connectCode,
         displayName: profile?.displayName || currentUsr?.displayName || currentUsr?.email?.split('@')[0] || 'Người dùng',
         deviceName: currentSettings.deviceName || profile?.deviceName || 'Thiết bị',
         deviceType: currentHwType,
@@ -209,10 +228,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         customAvatarUrl: avatarImg || null,
         status: 'online',
         lastSeen: new Date().toISOString(),
+        lastSeenMs: Date.now(),
+        lastSeenServer: serverTimestamp(),
       }, { merge: true });
 
       // Synchronize latest active hardware to users record
-      const userDocRef = doc(db, 'users', uid);
+      const userDocRef = doc(db, 'users', targetUid);
       setDoc(userDocRef, { deviceType: currentHwType }, { merge: true }).catch(() => {});
     } catch (err) {
       console.warn('Presence update error:', err);
@@ -221,8 +242,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const removePresence = async (uid: string) => {
     try {
-      const presenceRef = doc(db, 'presence', uid);
-      await deleteDoc(presenceRef);
+      const deviceId = getClientDeviceId();
+      const presenceKey = `${uid}_${deviceId}`;
+      const presenceRef = doc(db, 'presence', presenceKey);
+      await setDoc(presenceRef, {
+        status: 'offline',
+        lastSeen: new Date().toISOString(),
+        lastSeenMs: Date.now(),
+        lastSeenServer: serverTimestamp(),
+      }, { merge: true });
+      await deleteDoc(presenceRef).catch(() => {});
+      await deleteDoc(doc(db, 'presence', uid)).catch(() => {});
     } catch {
       // ignore
     }
@@ -375,20 +405,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    // Heartbeat interval every 45s (when tab is active) to eliminate lag and reduce unnecessary Firestore writes
+    // Fast Heartbeat interval every 7s (when tab is active) to keep real-time presence synchronized with zero lag
     if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
     heartbeatTimer.current = setInterval(() => {
       if (currentUserRef.current && typeof document !== 'undefined' && !document.hidden) {
         updatePresence(currentUserRef.current.uid);
       }
-    }, 45000);
+    }, 7000);
 
     const handleVisibilityChange = () => {
       if (typeof document !== 'undefined' && !document.hidden && currentUserRef.current) {
         updatePresence(currentUserRef.current.uid);
       }
     };
+    const handleFocus = () => {
+      if (currentUserRef.current) {
+        updatePresence(currentUserRef.current.uid);
+      }
+    };
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
 
     const handleWindowUnload = () => {
       if (currentUserRef.current) {
@@ -402,6 +438,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isMounted = false;
       unsubscribe();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
       window.removeEventListener('beforeunload', handleWindowUnload);
       window.removeEventListener('pagehide', handleWindowUnload);
       if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
@@ -659,7 +696,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const loginAsGuest = async (customDisplayName?: string, customDeviceName?: string) => {
-    const uid = 'guest_' + generateUid();
+    // Reuse existing guest UID if already created on this browser to avoid ghost duplicate devices
+    let uid = typeof window !== 'undefined' ? localStorage.getItem('cloudsend_guest_uid') : null;
+    if (!uid) {
+      uid = 'guest_' + generateUid();
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('cloudsend_guest_uid', uid);
+      }
+    }
+
     const devName = customDeviceName?.trim() || settings.deviceName;
     const dispName = customDisplayName?.trim() || devName || 'Khách ' + Math.floor(1000 + Math.random() * 9000);
     const guestUser: AppUser = {
@@ -684,6 +729,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setUserProfile(profileData);
     localStorage.setItem('cloudsend_user_profile', JSON.stringify(profileData));
+    setSettings((prev) => ({ ...prev, deviceName: devName }));
+
+    // Persist to users collection in Firestore so guest accounts are first-class peers
+    try {
+      await setDoc(doc(db, 'users', uid), profileData, { merge: true });
+    } catch (e) {
+      console.warn('Could not save guest profile to firestore:', e);
+    }
+
+    // Clean up any stale presence records for this physical device from earlier sessions
+    const deviceId = getClientDeviceId();
+    try {
+      const presenceKey = `${uid}_${deviceId}`;
+      const snap = await getDocs(query(collection(db, 'presence'), where('deviceId', '==', deviceId)));
+      for (const d of snap.docs) {
+        if (d.id !== presenceKey) {
+          deleteDoc(d.ref).catch(() => {});
+        }
+      }
+    } catch {}
+
     await updatePresence(uid, profileData);
   };
 
@@ -1465,6 +1531,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logoutAllDevices,
         syncGoogleProfilePhoto,
         linkWithGoogleAccount,
+        updatePresence,
       }}
     >
       {children}

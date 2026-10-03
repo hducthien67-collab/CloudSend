@@ -194,12 +194,42 @@ export const CloudDriveView: React.FC = () => {
           }
         }
 
-        // Upload using robust uploadFileToServer with smooth percentage tracking
-        const uploadedFile = await uploadFileToServer(file, (pct) => {
-          const fileShare = 100 / totalFiles;
-          const overall = Math.min(99, Math.round(i * fileShare + (pct / 100) * fileShare));
-          setUploadProgress(overall);
-        });
+        // Upload using robust uploadFileToServer with smooth percentage tracking and resilient fallback
+        let fileUrl = '';
+        let fileViewUrl = '';
+        let fileThumbnail = clientThumb || null;
+
+        try {
+          const uploadedFile = await uploadFileToServer(file, (pct) => {
+            const fileShare = 100 / totalFiles;
+            const overall = Math.min(99, Math.round(i * fileShare + (pct / 100) * fileShare));
+            setUploadProgress(overall);
+          });
+          fileUrl = uploadedFile.url;
+          fileViewUrl = uploadedFile.viewUrl || uploadedFile.url;
+          if (uploadedFile.thumbnail) {
+            fileThumbnail = uploadedFile.thumbnail;
+          }
+        } catch (uploadErr: any) {
+          // If server proxy is sleeping or unavailable, but file is under 750KB,
+          // store directly as Base64 Data URL so user is NEVER blocked!
+          if (file.size <= 750 * 1024) {
+            console.warn(`Server proxy busy, using resilient direct storage for "${file.name}"...`);
+            const base64Data = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL(file);
+            });
+            fileUrl = base64Data;
+            fileViewUrl = base64Data;
+            if (!fileThumbnail && isImageFile(file)) {
+              fileThumbnail = base64Data;
+            }
+          } else {
+            throw uploadErr;
+          }
+        }
 
         const category = getFileCategory(file.type, file.name);
 
@@ -213,9 +243,9 @@ export const CloudDriveView: React.FC = () => {
           name: file.name,
           size: file.size,
           type: file.type || 'application/octet-stream',
-          url: uploadedFile.url,
-          viewUrl: uploadedFile.viewUrl || uploadedFile.url,
-          thumbnail: uploadedFile.thumbnail || clientThumb || null,
+          url: fileUrl,
+          viewUrl: fileViewUrl,
+          thumbnail: fileThumbnail,
           category: category,
           isFavorite: false,
           createdAt: new Date().toISOString()

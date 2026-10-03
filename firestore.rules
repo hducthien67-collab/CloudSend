@@ -41,7 +41,7 @@ service cloud.firestore {
       allow list: if true;
       allow create: if isValidId(roomId);
       allow update: if isValidId(roomId);
-      allow delete: if isValidId(roomId);
+      allow delete: if isValidId(roomId) && roomId != 'public-relay-lounge';
 
       // Messages within rooms
       match /messages/{messageId} {
