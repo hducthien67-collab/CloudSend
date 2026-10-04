@@ -666,10 +666,14 @@ export const SendView: React.FC = () => {
             } catch (uploadErr: any) {
               console.warn(`Server upload notice for ${item.name}, using resilient direct fallback:`, uploadErr);
               const fallback = await createClientFallbackFileInfo(item.file);
-              fileUrl = fallback.url;
+              fileUrl = fallback.url || '';
               serverThumbnail = fallback.thumbnail || (isImageFile(item.file) ? fallback.url : '');
             }
           }
+
+          // Safety guard: Ensure properties never exceed Firestore limits (1,048,487 bytes)
+          const safeUrl = (fileUrl && fileUrl.length < 700000) ? fileUrl : '';
+          const safeData = (serverThumbnail && serverThumbnail.length < 700000) ? serverThumbnail : '';
 
           const payload: any = {
             senderId: currentUser.uid,
@@ -682,8 +686,8 @@ export const SendView: React.FC = () => {
             fileName: item.name,
             fileSize: item.size,
             fileType: item.type || (isImageFile(item) ? 'image/jpeg' : 'application/octet-stream'),
-            fileUrl: fileUrl,
-            fileData: serverThumbnail || ''
+            fileUrl: safeUrl,
+            fileData: safeData
           };
 
           await addDoc(collection(db, 'transfers'), payload);

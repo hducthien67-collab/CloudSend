@@ -231,12 +231,17 @@ export const CloudDriveView: React.FC = () => {
         } catch (uploadErr: any) {
           console.warn(`Server upload notice for "${file.name}", activating instant resilient direct storage:`, uploadErr);
           const fallback = await createClientFallbackFileInfo(file);
-          fileUrl = fallback.url;
-          fileViewUrl = fallback.viewUrl;
+          fileUrl = fallback.url || '';
+          fileViewUrl = fallback.viewUrl || '';
           fileThumbnail = fallback.thumbnail || (isImageFile(file) ? fallback.url : null);
         }
 
         const category = getFileCategory(file.type, file.name);
+
+        // Safety guard: Ensure properties never exceed Firestore limits (1,048,487 bytes)
+        const safeUrl = (fileUrl && fileUrl.length < 700000) ? fileUrl : '';
+        const safeViewUrl = (fileViewUrl && fileViewUrl.length < 700000) ? fileViewUrl : safeUrl;
+        const safeThumbnail = (fileThumbnail && fileThumbnail.length < 700000) ? fileThumbnail : null;
 
         // Save metadata into Firestore
         const docId = `cf_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
@@ -248,9 +253,9 @@ export const CloudDriveView: React.FC = () => {
           name: file.name,
           size: file.size,
           type: file.type || 'application/octet-stream',
-          url: fileUrl,
-          viewUrl: fileViewUrl,
-          thumbnail: fileThumbnail,
+          url: safeUrl,
+          viewUrl: safeViewUrl,
+          thumbnail: safeThumbnail,
           category: category,
           isFavorite: false,
           createdAt: new Date().toISOString()

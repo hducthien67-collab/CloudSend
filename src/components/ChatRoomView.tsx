@@ -723,20 +723,27 @@ export const ChatRoomView: React.FC = () => {
         messagePayload.viewedBy = [];
       }
 
+      // Sanitize attachments to ensure document size never exceeds Firestore limits (1,048,487 bytes)
+      const safeAttachments = attachmentsToSend.map(att => ({
+        ...att,
+        data: (att.data && att.data.length < 500000) ? att.data : '',
+        url: (att.url && att.url.length < 700000) ? att.url : undefined
+      }));
+
       // Backwards compatibility with single file fields
-      if (attachmentsToSend.length === 1) {
-        messagePayload.fileName = attachmentsToSend[0].name;
-        messagePayload.fileSize = attachmentsToSend[0].size;
-        messagePayload.fileType = attachmentsToSend[0].type;
-        messagePayload.fileData = attachmentsToSend[0].data;
-        if (attachmentsToSend[0].url) {
-          messagePayload.fileUrl = attachmentsToSend[0].url;
+      if (safeAttachments.length === 1) {
+        messagePayload.fileName = safeAttachments[0].name;
+        messagePayload.fileSize = safeAttachments[0].size;
+        messagePayload.fileType = safeAttachments[0].type;
+        messagePayload.fileData = safeAttachments[0].data;
+        if (safeAttachments[0].url) {
+          messagePayload.fileUrl = safeAttachments[0].url;
         }
       }
       
       // Multiple attachments array
-      if (attachmentsToSend.length > 0) {
-        messagePayload.attachments = attachmentsToSend;
+      if (safeAttachments.length > 0) {
+        messagePayload.attachments = safeAttachments;
       }
 
       const docRef = await addDoc(collection(db, 'rooms', activeRoomId, 'messages'), messagePayload);

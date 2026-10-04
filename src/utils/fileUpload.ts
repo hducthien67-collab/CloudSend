@@ -203,16 +203,23 @@ async function uploadViaBase64(
 }
 
 /**
- * Generates an instant local representation of a file (Base64 / Blob URL)
- * so file sending and cloud storage NEVER fail even during network interruptions.
+ * Generates a safe client-side representation of a file (under 600KB)
+ * so it never exceeds Firestore document property size limits (1,048,487 bytes).
  */
 export async function createClientFallbackFileInfo(file: File): Promise<UploadedFileInfo> {
-  const base64Data = await fileToBase64(file);
   const ext = (file.name || '').split('.').pop()?.toLowerCase();
   const isHeic = ext === 'heic' || ext === 'heif';
   let thumb: string | undefined = undefined;
+  let safeDataUrl = '';
+
   if (isImageFile(file)) {
-    thumb = await generateImageThumbnail(file, 480, 0.8).catch(() => undefined);
+    // Generate a lightweight thumbnail
+    thumb = await generateImageThumbnail(file, 480, 0.75).catch(() => undefined);
+    // For direct preview/transfer, compress image to safe size (< 400KB)
+    safeDataUrl = await compressImageForDirectTransfer(file, 960, 0.75).catch(() => '');
+  } else if (file.size <= 400 * 1024) {
+    // Only small non-image files (< 400KB) can be safely embedded as Base64 in Firestore
+    safeDataUrl = await fileToBase64(file).catch(() => '');
   }
 
   return {
@@ -221,9 +228,9 @@ export async function createClientFallbackFileInfo(file: File): Promise<Uploaded
     originalName: file.name,
     size: file.size,
     type: file.type || 'application/octet-stream',
-    url: base64Data,
-    viewUrl: base64Data,
-    thumbnail: thumb || (isImageFile(file) ? base64Data : undefined),
+    url: safeDataUrl,
+    viewUrl: safeDataUrl,
+    thumbnail: thumb || (isImageFile(file) ? safeDataUrl : undefined),
     isHeic: isHeic
   };
 }
@@ -378,12 +385,12 @@ export async function uploadFileToServer(
     console.warn(`XHR upload strategy notice for "${file.name}":`, xhrErr?.message || xhrErr);
   }
 
-  // Strategy 4: Resilient client-side fallback (for files up to 20MB)
-  if (file.size <= 20 * 1024 * 1024) {
-    console.log(`Activating resilient client-side storage for "${file.name}"...`);
+  // Strategy 4: Resilient client-side fallback for images or small files (< 400KB)
+  if (isImageFile(file) || file.size <= 400 * 1024) {
+    console.log(`Activating safe client-side preview/storage for "${file.name}"...`);
     if (onProgress) onProgress(100);
     return await createClientFallbackFileInfo(file);
   }
 
-  throw new Error(`Không thể kết nối đến máy chủ lưu trữ cho tệp lớn "${file.name}". Vui lòng thử lại sau vài giây.`);
+  throw new Error(`Không thể kết nối đến máy chủ lưu trữ cho tệp "${file.name}". Vui lòng thử lại.`);
 }
