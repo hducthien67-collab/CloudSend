@@ -156,7 +156,7 @@ export function compressImageForDirectTransfer(file: File, maxDim = 1280, qualit
 /**
  * Converts a File object to Base64 string safely
  */
-function fileToBase64(file: File): Promise<string> {
+export function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
@@ -324,7 +324,7 @@ export async function uploadFileToServer(
         throw new Error('Đường truyền mạng không ổn định hoặc proxy chặn kết nối. Vui lòng kiểm tra lại mạng hoặc thử tệp nhẹ hơn.');
       }
       if (finalMsg === 'HTML_RESPONSE' || finalMsg === 'INVALID_JSON') {
-        throw new Error('Máy chủ Render đang khởi động lại từ chế độ ngủ (mất khoảng 30-50 giây trên gói Free). Vui lòng đợi một chút rồi bấm thử lại!');
+        throw new Error('Máy chủ lưu trữ đang khởi động hoặc đường truyền mạng bị gián đoạn. Vui lòng thử lại sau vài giây.');
       }
       throw retryErr;
     }

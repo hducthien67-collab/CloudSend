@@ -58,6 +58,7 @@ import {
 import { formatFileSize } from '../utils/device';
 import { playSendSound, playReceiveSound, playDestructSound, playShieldAlertSound } from '../utils/sound';
 import { censorProfanity, moderateUploadedImage } from '../utils/moderation';
+import { downloadFileSafely } from '../utils/fileDownload';
 import { isDevUser } from '../utils/devModeration';
 import { renderClickableText, cleanAndFormatUserText, sanitizeDisplayText } from '../utils/textFormat';
 import { 
@@ -73,6 +74,7 @@ import { FileDocIcon, getDocumentTypeInfo } from './FileDocIcon';
 import { SelfDestructViewerModal } from './SelfDestructViewerModal';
 import { RulesModal } from './RulesModal';
 import { ReportMessageModal } from './ReportMessageModal';
+import { RichChatInput, RichChatInputHandle } from './RichChatInput';
 
 // Default Earth / Globe SVG Avatar for Global Lounge (Đại Sảnh Toàn Cầu)
 const DEFAULT_GLOBAL_LOUNGE_AVATAR = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="48" fill="%23064e3b" stroke="%2310b981" stroke-width="3"/><circle cx="50" cy="50" r="38" fill="%23047857"/><ellipse cx="50" cy="50" rx="18" ry="38" fill="none" stroke="%2334d399" stroke-width="2.5"/><line x1="12" y1="50" x2="88" y2="50" stroke="%2334d399" stroke-width="2.5"/><path d="M20 30 Q50 38 80 30" fill="none" stroke="%236ee7b7" stroke-width="2"/><path d="M20 70 Q50 62 80 70" fill="none" stroke="%236ee7b7" stroke-width="2"/></svg>`;
@@ -110,175 +112,33 @@ export const ChatRoomView: React.FC = () => {
   const [showRules, setShowRules] = useState(false);
 
   // Formatting & anti-glitch text toolbar
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const richInputRef = useRef<RichChatInputHandle>(null);
   const [formatNotice, setFormatNotice] = useState<string | null>(null);
   const [hasSelection, setHasSelection] = useState(false);
   const [enterKeyMode, setEnterKeyMode] = useState<'send' | 'newline'>(() => {
     return (localStorage.getItem('chat_enter_key_mode') as 'send' | 'newline') || 'send';
   });
 
-  // Check selection in textarea
-  const checkTextSelection = () => {
-    const el = textareaRef.current;
-    if (el && el.selectionStart !== el.selectionEnd && el.selectionEnd > el.selectionStart) {
-      const selected = inputText.substring(el.selectionStart, el.selectionEnd).trim();
-      setHasSelection(selected.length > 0);
-    } else {
-      setHasSelection(false);
-    }
-  };
-
-  // Toggle or apply formatting on selection / cursor (supports Ctrl+B, Ctrl+I, Ctrl+E)
+  // Toggle or apply formatting on selection / cursor (WYSIWYG: in đậm / in nghiêng / mã trực tiếp)
   const toggleFormatting = (type: 'bold' | 'italic' | 'code' | 'codeblock') => {
-    const el = textareaRef.current;
-    if (!el) {
-      if (type === 'bold') setInputText(prev => `${prev}**văn bản đậm**`);
-      else if (type === 'italic') setInputText(prev => `${prev}*văn bản nghiêng*`);
-      else if (type === 'code') setInputText(prev => `${prev}\`mã\``);
-      else if (type === 'codeblock') setInputText(prev => `${prev}\`\`\`\nconsole.log("hello");\n\`\`\``);
-      return;
-    }
-
-    const start = el.selectionStart || 0;
-    const end = el.selectionEnd || 0;
-    const selected = inputText.substring(start, end);
-
-    let prefix = '**';
-    let suffix = '**';
-    let defaultText = 'văn bản đậm';
-
-    if (type === 'italic') {
-      prefix = '*';
-      suffix = '*';
-      defaultText = 'văn bản nghiêng';
-    } else if (type === 'code') {
-      prefix = '`';
-      suffix = '`';
-      defaultText = 'mã';
-    } else if (type === 'codeblock') {
-      prefix = '```\n';
-      suffix = '\n```';
-      defaultText = 'console.log("hello");';
-    }
-
-    // If text is selected, check if it's already wrapped
-    if (start !== end && selected) {
-      if (type === 'bold' && selected.startsWith('**') && selected.endsWith('**') && selected.length >= 4) {
-        // Unwrap bold
-        const unwrapped = selected.slice(2, -2);
-        const nextText = inputText.substring(0, start) + unwrapped + inputText.substring(end);
-        setInputText(nextText);
-        setTimeout(() => {
-          el.focus();
-          el.setSelectionRange(start, start + unwrapped.length);
-          checkTextSelection();
-        }, 0);
-        return;
-      }
-
-      if (type === 'italic' && selected.startsWith('*') && selected.endsWith('*') && !selected.startsWith('**') && selected.length >= 2) {
-        // Unwrap italic
-        const unwrapped = selected.slice(1, -1);
-        const nextText = inputText.substring(0, start) + unwrapped + inputText.substring(end);
-        setInputText(nextText);
-        setTimeout(() => {
-          el.focus();
-          el.setSelectionRange(start, start + unwrapped.length);
-          checkTextSelection();
-        }, 0);
-        return;
-      }
-
-      if (type === 'code' && selected.startsWith('`') && selected.endsWith('`') && selected.length >= 2) {
-        // Unwrap code
-        const unwrapped = selected.slice(1, -1);
-        const nextText = inputText.substring(0, start) + unwrapped + inputText.substring(end);
-        setInputText(nextText);
-        setTimeout(() => {
-          el.focus();
-          el.setSelectionRange(start, start + unwrapped.length);
-          checkTextSelection();
-        }, 0);
-        return;
-      }
-
-      // Wrap selected text
-      const wrapped = `${prefix}${selected}${suffix}`;
-      const nextText = inputText.substring(0, start) + wrapped + inputText.substring(end);
-      setInputText(nextText);
-      setTimeout(() => {
-        el.focus();
-        el.setSelectionRange(start, start + wrapped.length);
-        checkTextSelection();
-      }, 0);
-    } else {
-      // No text selected: insert wrapper and place cursor inside
-      const placeholder = `${prefix}${defaultText}${suffix}`;
-      const nextText = inputText.substring(0, start) + placeholder + inputText.substring(end);
-      setInputText(nextText);
-      setTimeout(() => {
-        el.focus();
-        el.setSelectionRange(start + prefix.length, start + prefix.length + defaultText.length);
-        checkTextSelection();
-      }, 0);
-    }
-  };
-
-  // Keyboard shortcut listener for textarea
-  const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // 1. Enter key handling based on user mode
-    if (e.key === 'Enter') {
-      if (enterKeyMode === 'send') {
-        if (!e.shiftKey && !e.ctrlKey) {
-          e.preventDefault();
-          handleSendMessage();
-          return;
-        }
-      } else {
-        // Mode 'newline': Enter directly creates a newline without sending; Ctrl+Enter or clicking button sends
-        if (e.ctrlKey || e.metaKey) {
-          e.preventDefault();
-          handleSendMessage();
-          return;
-        }
-      }
-    }
-
-    const isCtrlOrCmd = e.ctrlKey || e.metaKey;
-
-    // 2. Ctrl + B / Cmd + B -> In đậm (Bold)
-    if (isCtrlOrCmd && (e.key === 'b' || e.key === 'B')) {
-      e.preventDefault();
-      toggleFormatting('bold');
-      setFormatNotice('✨ Đã in đậm văn bản (Ctrl+B)');
+    if (type === 'bold') {
+      richInputRef.current?.applyBold();
+      setFormatNotice('✨ Đã in đậm văn bản trực tiếp (Ctrl+B)');
       setTimeout(() => setFormatNotice(null), 2500);
-      return;
-    }
-
-    // 3. Ctrl + I / Cmd + I -> In nghiêng (Italic)
-    if (isCtrlOrCmd && (e.key === 'i' || e.key === 'I')) {
-      e.preventDefault();
-      toggleFormatting('italic');
-      setFormatNotice('✨ Đã in nghiêng văn bản (Ctrl+I)');
+    } else if (type === 'italic') {
+      richInputRef.current?.applyItalic();
+      setFormatNotice('✨ Đã in nghiêng văn bản trực tiếp (Ctrl+I)');
       setTimeout(() => setFormatNotice(null), 2500);
-      return;
-    }
-
-    // 4. Ctrl + E / Cmd + E or Ctrl + ` -> Inline Code
-    if (isCtrlOrCmd && (e.key === 'e' || e.key === 'E' || e.key === '`')) {
-      e.preventDefault();
-      toggleFormatting('code');
+    } else if (type === 'code' || type === 'codeblock') {
+      richInputRef.current?.applyCode?.();
       setFormatNotice('✨ Đã định dạng mã (Ctrl+E)');
       setTimeout(() => setFormatNotice(null), 2500);
-      return;
     }
   };
 
   // Smart Clean / Format Text (Làm gọn văn bản - chống văn bản rác, khoảng trắng thừa, BiDi rác, layout vỡ)
   const handleCleanInputText = () => {
-    if (!inputText.trim()) return;
-    const cleaned = cleanAndFormatUserText(inputText);
-    setInputText(cleaned);
+    richInputRef.current?.cleanText();
     setFormatNotice('✨ Đã tự động làm gọn văn bản & loại bỏ ký tự lỗi!');
     setTimeout(() => setFormatNotice(null), 3500);
   };
@@ -826,6 +686,7 @@ export const ChatRoomView: React.FC = () => {
 
     // Reset input immediately for responsive feel
     setInputText('');
+    richInputRef.current?.clear();
     setAttachments([]);
     setSelfDestructMode('off');
     setShowSelfDestructMenu(false);
@@ -1482,17 +1343,17 @@ export const ChatRoomView: React.FC = () => {
                                 <span className="text-[11px] text-white truncate max-w-[130px] font-medium drop-shadow">
                                   {img.name}
                                 </span>
-                                <a
-                                  href={imgDownload}
-                                  download={img.name}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="p-1 rounded-md bg-black/40 hover:bg-emerald-600 text-white transition-colors"
+                                <button
+                                  type="button"
+                                  className="p-1 rounded-md bg-black/40 hover:bg-emerald-600 text-white transition-colors cursor-pointer"
                                   title="Tải ảnh về máy"
-                                  onClick={(e) => e.stopPropagation()}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    downloadFileSafely(imgDownload, img.name);
+                                  }}
                                 >
                                   <Download className="w-3 h-3" />
-                                </a>
+                                </button>
                               </div>
                             </div>
                           );
@@ -1522,16 +1383,14 @@ export const ChatRoomView: React.FC = () => {
                                 </p>
                               </div>
                             </div>
-                            <a
-                              href={fileHref}
-                              download={file.name}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="p-1.5 rounded-lg bg-black/25 hover:bg-emerald-600 text-white transition-colors shrink-0 shadow-sm"
+                            <button
+                              type="button"
+                              onClick={() => downloadFileSafely(fileHref, file.name)}
+                              className="p-1.5 rounded-lg bg-black/25 hover:bg-emerald-600 text-white transition-colors shrink-0 shadow-sm cursor-pointer"
                               title="Tải tệp"
                             >
                               <Download className="w-3.5 h-3.5" />
-                            </a>
+                            </button>
                           </div>
                         );
                         })}
@@ -1800,31 +1659,26 @@ export const ChatRoomView: React.FC = () => {
                 <Paperclip className="w-5 h-5" />
               </button>
 
-              {/* Smart Compact Textarea Input with Selection, Paste & Keydown shortcuts listener */}
+              {/* Smart Rich Input with WYSIWYG Bold / Italic / Code & Gliding Neon Caret */}
               <div className="flex-1 relative min-w-0">
-                <textarea
+                <RichChatInput
                   id="chat-message-input"
-                  ref={textareaRef}
+                  ref={richInputRef}
                   value={inputText}
-                  rows={1}
-                  onChange={(e) => {
-                    setInputText(e.target.value);
-                    checkTextSelection();
-                    if (!e.target.value) {
-                      e.target.style.height = '44px';
-                    } else {
-                      e.target.style.height = 'auto';
-                      e.target.style.height = `${Math.min(Math.max(e.target.scrollHeight, 44), 72)}px`;
-                    }
+                  onChange={(md, _plain) => {
+                    setInputText(md);
                   }}
-                  onKeyDown={handleTextareaKeyDown}
-                  onSelect={checkTextSelection}
-                  onKeyUp={checkTextSelection}
-                  onMouseUp={checkTextSelection}
-                  onPaste={handleChatPaste}
-                  placeholder={isCompressing ? (uploadProgressText || "Đang tải & xử lý tệp tin...") : "Nhập tin nhắn... (Bôi đen & Ctrl+B để in đậm, Ctrl+I để in nghiêng, Enter gửi)"}
+                  onSend={() => handleSendMessage()}
+                  onPasteFiles={processAndAttachFiles}
+                  onSelectionChange={setHasSelection}
+                  onFormatNotice={(notice) => {
+                    setFormatNotice(notice);
+                    setTimeout(() => setFormatNotice(null), 2500);
+                  }}
+                  enterKeyMode={enterKeyMode}
                   disabled={isCompressing}
-                  className="smooth-input w-full px-4 py-2.5 bg-slate-950/80 border border-slate-800 focus:border-emerald-500/80 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none transition-all duration-150 resize-none max-h-20 min-h-[44px] leading-relaxed [overflow-wrap:anywhere]"
+                  placeholder={isCompressing ? (uploadProgressText || "Đang tải & xử lý tệp tin...") : "Nhập tin nhắn... (Bôi đen & Ctrl+B để in đậm, Ctrl+I để in nghiêng, Enter gửi)"}
+                  className="smooth-input"
                 />
               </div>
 

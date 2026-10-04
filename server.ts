@@ -279,6 +279,7 @@ async function startServer() {
       const mimeType = meta?.mimeType || 'application/octet-stream';
 
       res.setHeader('Content-Type', mimeType);
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
       res.setHeader(
         'Content-Disposition',
         `attachment; filename="${encodeURIComponent(customName)}"; filename*=UTF-8''${encodeURIComponent(customName)}`

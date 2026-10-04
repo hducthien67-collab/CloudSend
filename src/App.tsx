@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AuthModal } from './components/AuthModal';
 import { Navbar } from './components/Navbar';
@@ -16,11 +16,24 @@ import { DevCloudConsoleModal } from './components/DevCloudConsoleModal';
 import { DevDatastorePage } from './components/DevDatastorePage';
 import { RulesModal } from './components/RulesModal';
 import { db } from './firebase/config';
-import { collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
-import { Send, Loader2, ShieldAlert, Database, MessageSquare, X, Download, Check } from 'lucide-react';
+import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc } from 'firebase/firestore';
+import { 
+  Send, 
+  Loader2, 
+  ShieldAlert, 
+  Database, 
+  MessageSquare, 
+  MessageSquareText, 
+  X, 
+  Download, 
+  Check, 
+  Copy, 
+  CheckCheck 
+} from 'lucide-react';
 import { isDevUser } from './utils/devModeration';
 import { playReceiveSound } from './utils/sound';
 import { formatFileSize } from './utils/device';
+import { renderClickableText } from './utils/textFormat';
 
 function MainApp() {
   const { currentUser, loading, settings, verifyEmailCodeAndLink } = useAuth();
@@ -32,6 +45,12 @@ function MainApp() {
   const [incomingCount, setIncomingCount] = useState(0);
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [chatNotification, setChatNotification] = useState<{ id: string; senderName: string; text: string } | null>(null);
+  const [copiedNoticeText, setCopiedNoticeText] = useState(false);
+  const notifiedTransfersRef = useRef<Set<string>>(new Set());
+  const initialTransfersLoadedRef = useRef(false);
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+
   const [incomingTransferNotice, setIncomingTransferNotice] = useState<{
     id: string;
     senderName: string;
@@ -216,7 +235,8 @@ function MainApp() {
     };
   }, []);
 
-  // Monitor pending incoming transfers for badge & instant floating alert
+  // Monitor pending incoming transfers for badge & instant floating alert in corner of screen
+  // (Chuyên biệt bắt tin nhắn & tệp gửi trực tiếp từ tab Gửi, không phụ thuộc tab chat)
   useEffect(() => {
     if (!currentUser) return;
     const sessionStartTime = Date.now();
@@ -230,29 +250,42 @@ function MainApp() {
 
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
+          const docId = change.doc.id;
           const data = change.doc.data();
           const transferTime = data.createdAt ? new Date(data.createdAt).getTime() : Date.now();
-          // Alert if received recently
-          if (transferTime > sessionStartTime - 60000 && activeTab !== 'receive') {
+
+          // Tránh lặp thông báo nếu đã hiển thị trong phiên này
+          if (notifiedTransfersRef.current.has(docId)) return;
+
+          // Nếu tin nhắn mới nhận hoặc tạo trong vòng 15 phút gần nhất
+          const isRecent = transferTime > sessionStartTime - (15 * 60 * 1000);
+          const shouldNotify = !initialTransfersLoadedRef.current || isRecent;
+
+          if (shouldNotify && activeTabRef.current !== 'receive') {
+            notifiedTransfersRef.current.add(docId);
             if (settings?.soundEnabled) {
               playReceiveSound();
             }
             setIncomingTransferNotice({
-              id: change.doc.id,
+              id: docId,
               senderName: data.senderName || 'Người dùng',
               senderDevice: data.senderDevice || 'Thiết bị',
               fileName: data.fileName,
               fileSize: data.fileSize,
               textContent: data.textContent,
             });
+          } else {
+            notifiedTransfersRef.current.add(docId);
           }
         }
       });
+
+      initialTransfersLoadedRef.current = true;
     }, (err) => {
       console.warn('Pending transfers count notice:', err);
     });
     return () => unsubscribe();
-  }, [currentUser, activeTab, settings?.soundEnabled]);
+  }, [currentUser, settings?.soundEnabled]);
 
   // When user switches to receive tab, clear transfer notification banner
   useEffect(() => {
@@ -347,51 +380,119 @@ function MainApp() {
         unreadMessagesCount={unreadMessagesCount}
       />
 
-      {/* Global Floating Incoming Transfer Notification Banner */}
+      {/* Thông Báo Tin Nhắn / Tệp Tin Gửi Tới Ở Góc Màn Hình (Chỉ dành riêng cho tab Gửi/Transfers) */}
       {incomingTransferNotice && activeTab !== 'receive' && (
-        <div className="fixed top-20 left-4 right-4 sm:left-auto sm:right-6 z-50 max-w-sm w-full bg-slate-900/95 border-2 border-emerald-500/60 rounded-2xl p-4 shadow-2xl backdrop-blur-md animate-in slide-in-from-top-3 fade-in duration-200 flex flex-col gap-3">
+        <div className="fixed bottom-6 right-4 sm:right-6 z-50 max-w-sm sm:max-w-md w-full bg-slate-900/95 border-2 border-emerald-500/70 rounded-2xl p-4 shadow-2xl shadow-emerald-950/50 backdrop-blur-md animate-in slide-in-from-bottom-5 fade-in duration-200 flex flex-col gap-3">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/40">
-              <Download className="w-5 h-5 animate-bounce" />
+              {incomingTransferNotice.textContent ? (
+                <MessageSquareText className="w-5 h-5 animate-pulse text-emerald-300" />
+              ) : (
+                <Download className="w-5 h-5 animate-bounce" />
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold text-emerald-300 truncate">
-                  {incomingTransferNotice.senderName} ({incomingTransferNotice.senderDevice}):
-                </span>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-xs font-bold text-white truncate">
+                    {incomingTransferNotice.senderName}
+                  </span>
+                  <span className="text-[10px] text-slate-400 truncate">
+                    ({incomingTransferNotice.senderDevice})
+                  </span>
+                </div>
                 <button
                   type="button"
                   onClick={() => setIncomingTransferNotice(null)}
-                  className="text-slate-400 hover:text-white p-0.5 rounded-lg cursor-pointer"
+                  className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+                  title="Đóng thông báo"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
-              <p className="text-xs text-white font-medium truncate mt-0.5">
-                {incomingTransferNotice.fileName 
-                  ? `${incomingTransferNotice.fileName} ${incomingTransferNotice.fileSize ? `(${formatFileSize(incomingTransferNotice.fileSize)})` : ''}`
-                  : incomingTransferNotice.textContent || 'Đã gửi một tệp tin'}
-              </p>
+
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold inline-flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  {incomingTransferNotice.textContent ? 'Tin nhắn từ tab Gửi' : 'Tệp tin từ tab Gửi'}
+                </span>
+              </div>
             </div>
           </div>
+
+          {/* Nội dung tin nhắn văn bản gửi tới */}
+          {incomingTransferNotice.textContent && (
+            <div className="p-3 rounded-xl bg-slate-950/90 border border-slate-800 text-xs sm:text-sm text-slate-100 whitespace-pre-wrap break-words leading-relaxed max-h-36 overflow-y-auto scrollbar-thin select-text">
+              {renderClickableText(incomingTransferNotice.textContent, false, "text-emerald-400 underline font-semibold hover:text-emerald-300 inline-flex items-center gap-1")}
+            </div>
+          )}
+
+          {/* Tệp tin đính kèm nếu có */}
+          {incomingTransferNotice.fileName && (
+            <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-slate-200 truncate flex items-center justify-between gap-2">
+              <span className="font-semibold text-white truncate">{incomingTransferNotice.fileName}</span>
+              {incomingTransferNotice.fileSize && (
+                <span className="text-[11px] text-slate-400 shrink-0 font-mono">
+                  {formatFileSize(incomingTransferNotice.fileSize)}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Thanh nút thao tác nhanh ở góc màn hình */}
           <div className="flex items-center gap-2 pt-1">
+            {incomingTransferNotice.textContent && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (incomingTransferNotice.textContent) {
+                    navigator.clipboard.writeText(incomingTransferNotice.textContent);
+                    setCopiedNoticeText(true);
+                    setTimeout(() => setCopiedNoticeText(false), 2000);
+                  }
+                }}
+                className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer"
+                title="Sao chép toàn bộ nội dung tin nhắn vào bộ nhớ tạm"
+              >
+                {copiedNoticeText ? (
+                  <>
+                    <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-emerald-300">Đã chép!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Sao chép</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await updateDoc(doc(db, 'transfers', incomingTransferNotice.id), { status: 'completed' });
+                } catch (e) {
+                  console.warn('Mark read error:', e);
+                }
+                setIncomingTransferNotice(null);
+              }}
+              className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>{incomingTransferNotice.textContent ? 'Đã xem' : 'Nhận tệp'}</span>
+            </button>
+
             <button
               type="button"
               onClick={() => {
                 setActiveTab('receive');
                 setIncomingTransferNotice(null);
               }}
-              className="flex-1 py-2 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer"
+              className="flex-1 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white border border-slate-700 text-xs font-medium text-center transition-all cursor-pointer truncate"
             >
-              <Check className="w-3.5 h-3.5" />
-              <span>Nhận tệp ngay →</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setIncomingTransferNotice(null)}
-              className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-all cursor-pointer"
-            >
-              Để sau
+              Xem trong tab Nhận →
             </button>
           </div>
         </div>

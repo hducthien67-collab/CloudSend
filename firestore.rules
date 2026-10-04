@@ -1,124 +1,73 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Global Deny All Fallback
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
     // Accounts for custom email and password authentication
-    match /accounts/{emailKey} {
-      allow get: if isValidId(emailKey);
-      allow list: if false;
-      allow create: if isValidId(emailKey);
-      allow update: if isValidId(emailKey);
-      allow delete: if false;
+    match /accounts/{docId} {
+      allow read, write: if true;
     }
 
     // User profiles
-    match /users/{userId} {
-      allow get: if isValidId(userId);
-      allow list: if true;
-      allow create, update: if isValidId(userId);
-      allow delete: if isValidId(userId);
+    match /users/{docId} {
+      allow read, write: if true;
     }
 
     // Presence table for online LocalSend peer discovery over internet
-    match /presence/{userId} {
-      allow get: if isValidId(userId);
-      allow list: if true;
-      allow create, update: if isValidId(userId);
-      allow delete: if isValidId(userId);
+    match /presence/{docId} {
+      allow read, write: if true;
     }
 
-    // Chat Rooms
+    // Chat Rooms and subcollections (messages, audit_messages)
     match /rooms/{roomId} {
-      allow get: if isValidId(roomId);
-      allow list: if true;
-      allow create: if isValidId(roomId);
-      allow update: if isValidId(roomId);
-      allow delete: if isValidId(roomId) && roomId != 'public-relay-lounge';
-
-      // Messages within rooms
-      match /messages/{messageId} {
-        allow get: if isValidId(roomId) && isValidId(messageId);
-        allow list: if isValidId(roomId);
-        allow create: if isValidId(roomId) && isValidId(messageId);
-        allow update: if isValidId(roomId) && isValidId(messageId);
-        allow delete: if isValidId(roomId) && isValidId(messageId);
-      }
-
-      // Permanent Audit Messages archive for Dev Datastore (never lost even if client deletes)
-      match /audit_messages/{messageId} {
+      allow read, write: if true;
+      match /{allChildren=**} {
         allow read, write: if true;
       }
     }
 
     // Allow collection group query on messages for Datastore view
     match /{path=**}/messages/{messageId} {
-      allow read: if true;
-      allow write: if true;
+      allow read, write: if true;
+    }
+
+    // Allow collection group query on audit_messages for Dev Datastore
+    match /{path=**}/audit_messages/{messageId} {
+      allow read, write: if true;
     }
 
     // Direct LocalSend-style peer-to-peer transfers over internet
     match /transfers/{transferId} {
-      allow get: if isValidId(transferId);
-      allow list: if true;
-      allow create: if isValidId(transferId);
-      allow update: if isValidId(transferId);
-      allow delete: if isValidId(transferId);
+      allow read, write: if true;
     }
 
     // Notifications (such as room deletion farewell notices sent to members' Receive view)
     match /notifications/{notificationId} {
-      allow get: if isValidId(notificationId);
-      allow list: if true;
-      allow create: if isValidId(notificationId);
-      allow update: if isValidId(notificationId);
-      allow delete: if isValidId(notificationId);
+      allow read, write: if true;
     }
 
     // Sanctions, Warnings, and Email Bans enforced by Dev
     match /sanctions/{docId} {
-      allow get: if true;
-      allow list: if true;
-      allow create, update, delete: if true;
+      allow read, write: if true;
     }
 
     // Reports submitted by users on rule-breaking or evasive messages
     match /reports/{reportId} {
-      allow get: if true;
-      allow list: if true;
-      allow create: if true;
-      allow update, delete: if true;
+      allow read, write: if true;
     }
 
     // Device login sessions
     match /sessions/{sessionId} {
-      allow get: if true;
-      allow list: if true;
-      allow create, update: if true;
-      allow delete: if true;
+      allow read, write: if true;
     }
 
     // Email OTP 6-digit Verifications with 15-minute lifespan
     match /email_verifications/{verificationId} {
-      allow get: if true;
-      allow list: if true;
-      allow create, update: if true;
-      allow delete: if true;
+      allow read, write: if true;
     }
 
     // Personal Cloud Drive storage for each user
     match /cloud_files/{fileId} {
-      allow get: if true;
-      allow list: if true;
-      allow create, update: if true;
-      allow delete: if true;
+      allow read, write: if true;
     }
   }
 }
+

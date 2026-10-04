@@ -3,8 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { CloudSendLogo } from './CloudSendLogo';
 import { SilkFabricBackground } from './SilkFabricBackground';
 import { SmoothTypewriter } from './SmoothTypewriter';
-import { CustomCalendarPopover } from './CustomCalendarPopover';
-import { CustomDatePickerModal } from './CustomDatePickerModal';
+import { CompactWheelDatePicker } from './CompactWheelDatePicker';
 import { 
   ShieldCheck, 
   Sparkles, 
@@ -58,9 +57,8 @@ export const AuthModal: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
-  // Date Picker Modals
-  const [showCalendarPopover, setShowCalendarPopover] = useState(false);
-  const [showSliderDatePicker, setShowSliderDatePicker] = useState(false);
+  // Date Picker Wheel Modal (Cuộn lăn chuột & vuốt chạm điện thoại)
+  const [showWheelDatePicker, setShowWheelDatePicker] = useState(false);
 
   const resetFormErrors = () => {
     setErrorMsg(null);
@@ -583,9 +581,7 @@ export const AuthModal: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 2. NGÀY/THÁNG/NĂM SINH:
-                    - Bấm vào logo hình cuốn lịch: Mở Bảng Lịch to rõ tự làm (CustomCalendarPopover).
-                    - Bấm vào text: Mở Bảng thanh trượt Ngày/Tháng/Năm ở giữa màn hình (CustomDatePickerModal). */}
+                {/* 2. NGÀY/THÁNG/NĂM SINH (Cuộn khi lăn chuột hoặc vuốt trên điện thoại) */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-semibold text-slate-200">
@@ -595,36 +591,35 @@ export const AuthModal: React.FC = () => {
                   </div>
 
                   <div className="relative flex items-center">
-                    {/* NÚT LOGO HÌNH CUỐN LỊCH (To, rõ ràng, dễ bấm -> Mở Bảng Lịch tự làm) */}
+                    {/* Icon cuốn lịch nhỏ gọn, đặt ở góc trái của ô nhập */}
                     <button
                       type="button"
-                      onClick={() => setShowCalendarPopover(true)}
-                      className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 hover:text-emerald-300 transition-all border border-emerald-500/40 active:scale-90 shadow-sm z-10 group"
-                      title="Nhấn để mở Bảng Lịch chọn ngày to rõ"
+                      onClick={() => setShowWheelDatePicker(!showWheelDatePicker)}
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-emerald-400 hover:text-emerald-300 transition-colors z-10 p-1 rounded-md hover:bg-slate-800/60 group cursor-pointer"
+                      title="Bấm để cuộn chọn ngày tháng năm sinh (lăn chuột hoặc vuốt điện thoại)"
                     >
-                      <Calendar className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+                      <Calendar className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
                     </button>
 
-                    {/* Ô NHẬP TEXT: Bấm vào mở Bảng Thanh Trượt ở giữa màn hình */}
+                    {/* Ô NHẬP TEXT: Bấm vào mở Bảng Cuộn Ngày Sinh */}
                     <input
                       id="input-reg-dob"
                       type="text"
                       readOnly
-                      value={dob ? dob.split('-').reverse().join('/') : ''}
-                      onClick={() => setShowSliderDatePicker(true)}
-                      placeholder="Bấm chọn ngày / tháng / năm sinh"
-                      className="smooth-input w-full pl-12 pr-11 py-2.5 bg-slate-950/80 border border-slate-700/80 hover:border-emerald-500/60 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none cursor-pointer transition-all duration-200 select-none"
+                      value={dob ? dob.split('-').reverse().join(' / ') : ''}
+                      onClick={() => setShowWheelDatePicker(!showWheelDatePicker)}
+                      placeholder="Bấm để cuộn chọn Ngày / Tháng / Năm sinh"
+                      className="smooth-input w-full pl-9 pr-3 py-2 bg-slate-950/80 border border-slate-700/80 hover:border-emerald-500/60 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none cursor-pointer transition-all duration-200 select-none"
                     />
 
-                    {/* NÚT THANH TRƯỢT BÊN PHẢI */}
-                    <button
-                      type="button"
-                      onClick={() => setShowSliderDatePicker(true)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-emerald-300 hover:bg-slate-800 transition-colors"
-                      title="Mở thanh trượt điều chỉnh Ngày/Tháng/Năm"
-                    >
-                      <Sliders className="w-4 h-4" />
-                    </button>
+                    {/* BẢNG CUỘN ĐẶT Ở DƯỚI GÓC TRÁI CỦA ICON CUỐN LỊCH */}
+                    {showWheelDatePicker && (
+                      <CompactWheelDatePicker
+                        value={dob}
+                        onSave={(newDate) => setDob(newDate)}
+                        onClose={() => setShowWheelDatePicker(false)}
+                      />
+                    )}
                   </div>
                 </div>
 
@@ -769,24 +764,6 @@ export const AuthModal: React.FC = () => {
           </span>
         </div>
       </div>
-
-      {/* POPUP BẢNG LỊCH MINI TỰ LÀM (KHI BẤM VÀO LOGO CUỐN LỊCH) */}
-      {showCalendarPopover && (
-        <CustomCalendarPopover
-          value={dob}
-          onChange={(newDate) => setDob(newDate)}
-          onClose={() => setShowCalendarPopover(false)}
-        />
-      )}
-
-      {/* POPUP THANH TRƯỢT CHỈNH NGÀY/THÁNG/NĂM Ở GIỮA MÀN HÌNH (KHI BẤM VÀO TEXT NGÀY SINH) */}
-      {showSliderDatePicker && (
-        <CustomDatePickerModal
-          value={dob}
-          onSave={(newDate) => setDob(newDate)}
-          onClose={() => setShowSliderDatePicker(false)}
-        />
-      )}
     </div>
   );
 };

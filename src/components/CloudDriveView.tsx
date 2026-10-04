@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { uploadFileToServer, isImageFile, generateImageThumbnail } from '../utils/fileUpload';
 import { FileDocIcon, getDocumentTypeInfo } from './FileDocIcon';
+import { downloadFileSafely } from '../utils/fileDownload';
 
 const MAX_QUOTA_BYTES = 1024 * 1024 * 1024; // 1 GB (1024 MB) personal storage quota
 
@@ -770,14 +771,14 @@ export const CloudDriveView: React.FC = () => {
               >
                 <div className="flex items-center gap-1">
                   {/* Download */}
-                  <a
-                    href={file.url}
-                    download={file.name}
+                  <button
+                    type="button"
+                    onClick={() => downloadFileSafely(file.url, file.name)}
                     title="Tải về máy tính / điện thoại"
-                    className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-emerald-400 transition-colors"
+                    className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-emerald-400 transition-colors cursor-pointer"
                   >
                     <Download className="w-4 h-4" />
-                  </a>
+                  </button>
 
                   {/* Copy Share Link */}
                   <button
@@ -838,14 +839,14 @@ export const CloudDriveView: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2">
-                <a
-                  href={previewFile.url}
-                  download={previewFile.name}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors"
+                <button
+                  type="button"
+                  onClick={() => downloadFileSafely(previewFile.url, previewFile.name)}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Tải về</span>
-                </a>
+                </button>
                 <button
                   type="button"
                   title="Xóa tệp này khỏi Cloud"
@@ -899,14 +900,14 @@ export const CloudDriveView: React.FC = () => {
                   <p className="text-xs text-slate-400 mb-5">
                     {getDocumentTypeInfo(previewFile.name, previewFile.type).label} • {formatFileSize(previewFile.size)}
                   </p>
-                  <a
-                    href={previewFile.url}
-                    download={previewFile.name}
-                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs inline-flex items-center gap-2 shadow-lg hover:shadow-emerald-600/20 transition-all"
+                  <button
+                    type="button"
+                    onClick={() => downloadFileSafely(previewFile.url, previewFile.name)}
+                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs inline-flex items-center gap-2 shadow-lg hover:shadow-emerald-600/20 transition-all cursor-pointer"
                   >
                     <Download className="w-4 h-4" />
                     <span>Tải tệp về máy để xem</span>
-                  </a>
+                  </button>
                 </div>
               )}
             </div>

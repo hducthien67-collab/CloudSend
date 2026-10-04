@@ -39,6 +39,7 @@ import { playReceiveSound } from '../utils/sound';
 import { isImageFile } from '../utils/fileUpload';
 import { FileDocIcon, getDocumentTypeInfo } from './FileDocIcon';
 import { extractUrls, hasUrls, renderClickableText } from '../utils/textFormat';
+import { downloadFileSafely } from '../utils/fileDownload';
 
 export const ReceiveView: React.FC = () => {
   const { currentUser, settings, updateSettings } = useAuth();
@@ -121,19 +122,11 @@ export const ReceiveView: React.FC = () => {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleDownloadFile = (item: DirectTransfer) => {
+  const handleDownloadFile = async (item: DirectTransfer) => {
     const fileSource = item.fileUrl || item.fileData;
     if (!fileSource) return;
-    const a = document.createElement('a');
-    a.href = fileSource;
-    a.download = item.fileName || 'cloudsend-file';
-    if (item.fileUrl) {
-      a.target = '_blank';
-      a.rel = 'noreferrer';
-    }
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const name = item.fileName || 'cloudsend-file';
+    await downloadFileSafely(fileSource, name);
   };
 
   const isTv = settings.deviceType === 'tv' || settings.tvModeEnabled;

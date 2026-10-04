@@ -53,5 +53,19 @@
     "mimeType": "application/octet-stream",
     "createdAt": "2026-09-26T04:02:13.720Z",
     "isHeic": false
+  },
+  "1791030491436_wr9kduo.txt": {
+    "originalName": "test.txt",
+    "size": 16,
+    "mimeType": "text/plain",
+    "createdAt": "2026-10-03T12:28:11.439Z",
+    "isHeic": false
+  },
+  "1791030866832_pgpkcwf.txt": {
+    "originalName": "testfile.txt",
+    "size": 19,
+    "mimeType": "text/plain",
+    "createdAt": "2026-10-03T12:34:26.833Z",
+    "isHeic": false
   }
 }

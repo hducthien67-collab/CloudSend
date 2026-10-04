@@ -59,12 +59,15 @@ import {
   generateImageThumbnail, 
   compressImageForDirectTransfer,
   isImageFile,
+  fileToBase64,
   MAX_FILE_SIZE, 
   MAX_FILE_SIZE_LABEL 
 } from '../utils/fileUpload';
+import { downloadFileSafely } from '../utils/fileDownload';
 import { FileDocIcon, getDocumentTypeInfo } from './FileDocIcon';
 import { CloudDrivePickerModal } from './CloudDrivePickerModal';
 import { SmoothSpaceTextarea } from './SmoothSpaceTextarea';
+import { RichChatInput } from './RichChatInput';
 import { CloudDriveFile } from '../types';
 
 export interface SendFileItem {
@@ -665,11 +668,23 @@ export const SendView: React.FC = () => {
               if (!directData && isImageFile(item.file)) {
                 directData = await compressImageForDirectTransfer(item.file, 1280, 0.82);
               }
-              if (directData && directData.length < 850 * 1024) {
+              // Fail-safe for any file type under 850KB (documents, code, text, etc.)
+              if (!directData && item.file.size < 850 * 1024) {
+                try {
+                  directData = await fileToBase64(item.file);
+                } catch (b64Err) {
+                  console.warn('File to base64 fallback failed:', b64Err);
+                }
+              }
+
+              if (directData && directData.length < 900 * 1024) {
                 serverThumbnail = directData;
                 fileUrl = '';
               } else {
-                throw uploadErr;
+                throw new Error(
+                  uploadErr?.message || 
+                  `Không thể gửi tệp "${item.name}". Máy chủ lưu trữ đang khởi động hoặc đường truyền mạng bị gián đoạn. Vui lòng thử lại.`
+                );
               }
             }
           }
@@ -1779,15 +1794,16 @@ export const SendView: React.FC = () => {
               Nhập tin nhắn
             </h3>
 
-            {/* Input area with smooth space and gliding caret effects */}
+            {/* Input area with animated gliding caret and WYSIWYG Ctrl+B / Ctrl+I formatting */}
             <div className="rounded-xl overflow-hidden bg-[#242b3b] border border-slate-700/60 focus-within:border-sky-400/80 focus-within:ring-2 focus-within:ring-sky-400/20 transition-all">
-              <SmoothSpaceTextarea
+              <RichChatInput
                 id="modal-message-input"
-                rows={3}
                 value={modalTextValue}
-                onChange={(val) => setModalTextValue(val)}
-                placeholder="Nhập tin nhắn..."
-                className="bg-transparent border-0"
+                onChange={(md) => setModalTextValue(md)}
+                onSend={handleConfirmTextModal}
+                enterKeyMode="newline"
+                placeholder="Nhập tin nhắn... (Bôi đen & Ctrl+B để in đậm, Ctrl+I để in nghiêng)"
+                className="bg-transparent border-0 min-h-[90px]"
               />
             </div>
 
