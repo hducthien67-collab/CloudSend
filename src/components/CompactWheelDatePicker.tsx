@@ -39,6 +39,7 @@ export const CompactWheelDatePicker: React.FC<CompactWheelDatePickerProps> = ({
 
   const isUserScrollingRef = useRef(false);
   const scrollTimeoutRef = useRef<Record<string, any>>({});
+  const lastWheelTimestampRef = useRef<Record<string, number>>({ day: 0, month: 0, year: 0 });
 
   // Maximum days in the selected month & year
   const maxDays = useMemo(() => {
@@ -112,9 +113,10 @@ export const CompactWheelDatePicker: React.FC<CompactWheelDatePickerProps> = ({
     };
   }, [onClose]);
 
-  // Smooth mouse wheel handlers per column
+  // Smooth mouse wheel handlers per column: exactly 1 unit (+1 or -1) per wheel notch/gesture
   const handleWheel = (
     e: React.WheelEvent,
+    type: 'day' | 'month' | 'year',
     colRef: React.RefObject<HTMLDivElement | null>,
     currentVal: number,
     list: number[],
@@ -124,6 +126,13 @@ export const CompactWheelDatePicker: React.FC<CompactWheelDatePickerProps> = ({
     e.stopPropagation();
     const el = colRef.current;
     if (!el) return;
+
+    const now = Date.now();
+    // Throttle wheel events by 130ms so 1 physical wheel notch strictly advances 1 single unit
+    if (now - (lastWheelTimestampRef.current[type] || 0) < 130) {
+      return;
+    }
+    lastWheelTimestampRef.current[type] = now;
 
     const direction = e.deltaY > 0 ? 1 : -1;
     const currentIdx = list.indexOf(currentVal);
@@ -252,7 +261,7 @@ export const CompactWheelDatePicker: React.FC<CompactWheelDatePickerProps> = ({
           {/* COLUMN 1: NGÀY */}
           <div
             ref={dayListRef}
-            onWheel={(e) => handleWheel(e, dayListRef, selectedDay, days, setSelectedDay)}
+            onWheel={(e) => handleWheel(e, 'day', dayListRef, selectedDay, days, setSelectedDay)}
             onScroll={() => handleScroll('day', dayListRef, days, setSelectedDay)}
             className="h-full overflow-y-auto snap-y snap-mandatory scrollbar-none text-center relative z-20 touch-pan-y"
           >
@@ -284,7 +293,7 @@ export const CompactWheelDatePicker: React.FC<CompactWheelDatePickerProps> = ({
           {/* COLUMN 2: THÁNG */}
           <div
             ref={monthListRef}
-            onWheel={(e) => handleWheel(e, monthListRef, selectedMonth, months, setSelectedMonth)}
+            onWheel={(e) => handleWheel(e, 'month', monthListRef, selectedMonth, months, setSelectedMonth)}
             onScroll={() => handleScroll('month', monthListRef, months, setSelectedMonth)}
             className="h-full overflow-y-auto snap-y snap-mandatory scrollbar-none text-center relative z-20 touch-pan-y border-x border-slate-800/60"
           >
@@ -316,7 +325,7 @@ export const CompactWheelDatePicker: React.FC<CompactWheelDatePickerProps> = ({
           {/* COLUMN 3: NĂM */}
           <div
             ref={yearListRef}
-            onWheel={(e) => handleWheel(e, yearListRef, selectedYear, years, setSelectedYear)}
+            onWheel={(e) => handleWheel(e, 'year', yearListRef, selectedYear, years, setSelectedYear)}
             onScroll={() => handleScroll('year', yearListRef, years, setSelectedYear)}
             className="h-full overflow-y-auto snap-y snap-mandatory scrollbar-none text-center relative z-20 touch-pan-y"
           >

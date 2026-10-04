@@ -79,8 +79,8 @@ async function startServer() {
   });
 
   // Support JSON body for image moderation & base64
-  app.use(express.json({ limit: '50mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+  app.use(express.json({ limit: '200mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '200mb' }));
 
   // Primary Health Check for Cloud Run Deployment and Load Balancer
   app.get('/api/health', (_req, res) => {

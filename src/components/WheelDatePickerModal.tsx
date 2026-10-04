@@ -37,6 +37,7 @@ export const WheelDatePickerModal: React.FC<WheelDatePickerModalProps> = ({
   const yearListRef = useRef<HTMLDivElement>(null);
 
   const isUserScrollingRef = useRef(false);
+  const lastWheelTimestampRef = useRef<Record<string, number>>({ day: 0, month: 0, year: 0 });
 
   // Maximum days in the selected month & year
   const maxDays = useMemo(() => {
@@ -93,6 +94,37 @@ export const WheelDatePickerModal: React.FC<WheelDatePickerModalProps> = ({
 
     return () => clearTimeout(timer);
   }, []);
+
+  // Smooth mouse wheel handlers per column: exactly 1 unit (+1 or -1) per wheel notch/gesture
+  const handleWheel = (
+    e: React.WheelEvent,
+    type: 'day' | 'month' | 'year',
+    colRef: React.RefObject<HTMLDivElement | null>,
+    currentVal: number,
+    list: number[],
+    setter: (val: number) => void
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const el = colRef.current;
+    if (!el) return;
+
+    const now = Date.now();
+    if (now - (lastWheelTimestampRef.current[type] || 0) < 130) {
+      return;
+    }
+    lastWheelTimestampRef.current[type] = now;
+
+    const direction = e.deltaY > 0 ? 1 : -1;
+    const currentIdx = list.indexOf(currentVal);
+    const nextIdx = Math.max(0, Math.min(currentIdx + direction, list.length - 1));
+    const nextVal = list[nextIdx];
+
+    if (nextVal !== undefined) {
+      setter(nextVal);
+      scrollColumnToValue(colRef, nextIdx, true);
+    }
+  };
 
   // Handle scroll events on Day column
   const handleDayScroll = () => {
@@ -237,6 +269,7 @@ export const WheelDatePickerModal: React.FC<WheelDatePickerModalProps> = ({
             {/* Cột 1: NGÀY (1 -> 31) */}
             <div 
               ref={dayListRef}
+              onWheel={(e) => handleWheel(e, 'day', dayListRef, selectedDay, days, setSelectedDay)}
               onScroll={handleDayScroll}
               className="h-full overflow-y-auto snap-y snap-mandatory scrollbar-none text-center relative z-20"
               style={{ scrollBehavior: 'smooth' }}
@@ -271,6 +304,7 @@ export const WheelDatePickerModal: React.FC<WheelDatePickerModalProps> = ({
             {/* Cột 2: THÁNG (1 -> 12) */}
             <div 
               ref={monthListRef}
+              onWheel={(e) => handleWheel(e, 'month', monthListRef, selectedMonth, months, setSelectedMonth)}
               onScroll={handleMonthScroll}
               className="h-full overflow-y-auto snap-y snap-mandatory scrollbar-none text-center relative z-20 border-x border-slate-800/60"
               style={{ scrollBehavior: 'smooth' }}
@@ -303,6 +337,7 @@ export const WheelDatePickerModal: React.FC<WheelDatePickerModalProps> = ({
             {/* Cột 3: NĂM (2026 -> 1920) */}
             <div 
               ref={yearListRef}
+              onWheel={(e) => handleWheel(e, 'year', yearListRef, selectedYear, years, setSelectedYear)}
               onScroll={handleYearScroll}
               className="h-full overflow-y-auto snap-y snap-mandatory scrollbar-none text-center relative z-20"
               style={{ scrollBehavior: 'smooth' }}

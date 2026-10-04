@@ -36,7 +36,7 @@ import {
   Filter,
   X
 } from 'lucide-react';
-import { uploadFileToServer, isImageFile, generateImageThumbnail } from '../utils/fileUpload';
+import { uploadFileToServer, isImageFile, generateImageThumbnail, createClientFallbackFileInfo } from '../utils/fileUpload';
 import { FileDocIcon, getDocumentTypeInfo } from './FileDocIcon';
 import { downloadFileSafely } from '../utils/fileDownload';
 
@@ -57,7 +57,24 @@ export const CloudDriveView: React.FC = () => {
   const [dragOver, setDragOver] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Custom in-app delete modal states (bảng xác nhận xóa tùy chỉnh trong web)
+  const [filePendingDelete, setFilePendingDelete] = useState<CloudDriveFile | null>(null);
+  const [bulkPendingDelete, setBulkPendingDelete] = useState<{ count: number; catLabel: string; targetFiles: CloudDriveFile[] } | null>(null);
+  const [skipDeleteConfirm, setSkipDeleteConfirm] = useState<boolean>(() => {
+    return typeof window !== 'undefined' && localStorage.getItem('cloudsend_skip_delete_confirm') === 'true';
+  });
+  const [dontAskAgainChecked, setDontAskAgainChecked] = useState(false);
+  const [bottomToast, setBottomToast] = useState<{ id: string; message: string; isError?: boolean } | null>(null);
+  const toastTimerRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const showBottomToast = (message: string, isError = false) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setBottomToast({ id: `${Date.now()}`, message, isError });
+    toastTimerRef.current = setTimeout(() => {
+      setBottomToast(null);
+    }, 4500);
+  };
 
   // Real-time synchronization of personal Cloud files via Firestore
   useEffect(() => {
@@ -212,24 +229,11 @@ export const CloudDriveView: React.FC = () => {
             fileThumbnail = uploadedFile.thumbnail;
           }
         } catch (uploadErr: any) {
-          // If server proxy is sleeping or unavailable, but file is under 750KB,
-          // store directly as Base64 Data URL so user is NEVER blocked!
-          if (file.size <= 750 * 1024) {
-            console.warn(`Server proxy busy, using resilient direct storage for "${file.name}"...`);
-            const base64Data = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => resolve(reader.result as string);
-              reader.onerror = reject;
-              reader.readAsDataURL(file);
-            });
-            fileUrl = base64Data;
-            fileViewUrl = base64Data;
-            if (!fileThumbnail && isImageFile(file)) {
-              fileThumbnail = base64Data;
-            }
-          } else {
-            throw uploadErr;
-          }
+          console.warn(`Server upload notice for "${file.name}", activating instant resilient direct storage:`, uploadErr);
+          const fallback = await createClientFallbackFileInfo(file);
+          fileUrl = fallback.url;
+          fileViewUrl = fallback.viewUrl;
+          fileThumbnail = fallback.thumbnail || (isImageFile(file) ? fallback.url : null);
         }
 
         const category = getFileCategory(file.type, file.name);
@@ -300,13 +304,19 @@ export const CloudDriveView: React.FC = () => {
     }
   };
 
-  // Delete file from Cloud & server
-  const handleDeleteFile = async (file: CloudDriveFile, e?: React.MouseEvent) => {
+  // Trigger single file deletion
+  const handleDeleteFile = (file: CloudDriveFile, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (!confirm(`Bạn có chắc muốn xóa vĩnh viễn tệp "${file.name}" khỏi Cloud?`)) {
-      return;
+    if (skipDeleteConfirm) {
+      performDeleteFile(file);
+    } else {
+      setDontAskAgainChecked(false);
+      setFilePendingDelete(file);
     }
+  };
 
+  // Perform actual single file delete
+  const performDeleteFile = async (file: CloudDriveFile) => {
     try {
       // 1. Delete Firestore record
       await deleteDoc(doc(db, 'cloud_files', file.id));
@@ -321,21 +331,27 @@ export const CloudDriveView: React.FC = () => {
         setPreviewFile(null);
       }
 
-      setStatusMessage({
-        type: 'success',
-        text: `Đã xóa tệp "${file.name}".`
-      });
+      showBottomToast(`Bạn đã xóa "${file.name}" khỏi Kho Cloud`);
     } catch (err) {
       console.error('Error deleting file:', err);
-      setStatusMessage({
-        type: 'error',
-        text: 'Không thể xóa tệp. Vui lòng thử lại.'
-      });
+      showBottomToast(`Không thể xóa tệp "${file.name}". Vui lòng thử lại.`, true);
     }
   };
 
-  // Delete files in Cloud (Images, Videos, Audios, Documents)
-  const handleDeleteFiles = async (scope: 'all' | 'category' = 'all') => {
+  // Confirm delete from in-app modal
+  const confirmDeleteFile = async () => {
+    if (!filePendingDelete) return;
+    if (dontAskAgainChecked) {
+      setSkipDeleteConfirm(true);
+      localStorage.setItem('cloudsend_skip_delete_confirm', 'true');
+    }
+    const file = filePendingDelete;
+    setFilePendingDelete(null);
+    await performDeleteFile(file);
+  };
+
+  // Trigger bulk deletion modal
+  const handleDeleteFiles = (scope: 'all' | 'category' = 'all') => {
     const targetFiles = scope === 'category' && selectedCategory !== 'all'
       ? files.filter(f => selectedCategory === 'favorite' ? f.isFavorite : f.category === selectedCategory)
       : files;
@@ -349,11 +365,16 @@ export const CloudDriveView: React.FC = () => {
         : selectedCategory === 'document' ? 'tài liệu'
         : selectedCategory === 'favorite' ? 'tệp yêu thích'
         : 'tệp')
-      : 'tệp (Hình ảnh, Video, Âm thanh, Tài liệu...)';
+      : 'tất cả tệp (Hình ảnh, Video, Âm thanh, Tài liệu...)';
 
-    if (!confirm(`Bạn có chắc chắn muốn XÓA TẤT CẢ ${count} ${catLabel} khỏi Kho Cloud vĩnh viễn không? Hành động này sẽ giải phóng dung lượng và không thể hoàn tác!`)) {
-      return;
-    }
+    setBulkPendingDelete({ count, catLabel, targetFiles });
+  };
+
+  // Confirm bulk delete from modal
+  const confirmBulkDelete = async () => {
+    if (!bulkPendingDelete) return;
+    const { count, catLabel, targetFiles } = bulkPendingDelete;
+    setBulkPendingDelete(null);
 
     try {
       const batchPromises = targetFiles.map(async (file) => {
@@ -364,18 +385,10 @@ export const CloudDriveView: React.FC = () => {
         }
       });
       await Promise.all(batchPromises);
-      setStatusMessage({
-        type: 'success',
-        text: `Đã xóa toàn bộ ${count} ${catLabel} khỏi Kho Cloud thành công.`
-      });
-      setTimeout(() => setStatusMessage(null), 5000);
+      showBottomToast(`Bạn đã xóa toàn bộ ${count} ${catLabel} khỏi Kho Cloud`);
     } catch (err: any) {
       console.error('Error deleting files:', err);
-      setStatusMessage({
-        type: 'error',
-        text: 'Có lỗi xảy ra khi xóa tệp.'
-      });
-      setTimeout(() => setStatusMessage(null), 5000);
+      showBottomToast('Có lỗi xảy ra khi xóa tệp.', true);
     }
   };
 
@@ -911,6 +924,180 @@ export const CloudDriveView: React.FC = () => {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* 1. BẢNG XÁC NHẬN XÓA TỆP TÙY CHỈNH (IN-APP DELETE MODAL)      */}
+      {/* ============================================================ */}
+      {filePendingDelete && (
+        <div
+          className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in select-none"
+          onClick={() => setFilePendingDelete(null)}
+        >
+          <div
+            className="w-full max-w-sm sm:max-w-md bg-slate-900/98 border border-rose-500/40 rounded-3xl p-5 sm:p-6 shadow-2xl shadow-rose-950/40 space-y-4 animate-in zoom-in-95 text-slate-100 relative overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Glow trang trí */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-36 h-36 bg-rose-500/10 rounded-full blur-2xl pointer-events-none" />
+
+            {/* Header: Icon tệp lớn & Tiêu đề */}
+            <div className="text-center space-y-3 relative z-10">
+              <div className="w-16 h-16 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-400 flex items-center justify-center mx-auto shadow-lg shadow-rose-950/50 overflow-hidden">
+                {filePendingDelete.thumbnail ? (
+                  <img
+                    src={filePendingDelete.thumbnail}
+                    alt={filePendingDelete.name}
+                    className="w-full h-full object-cover rounded-2xl"
+                  />
+                ) : (
+                  <FileDocIcon fileName={filePendingDelete.name} mimeType={filePendingDelete.type} size="hero" />
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <h3 className="text-base sm:text-lg font-bold text-white">
+                  Xác nhận xóa tệp?
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-300">
+                  Bạn có chắc chắn là muốn xóa nó không?
+                </p>
+              </div>
+            </div>
+
+            {/* Khung chi tiết tệp */}
+            <div className="p-3 rounded-2xl bg-slate-950/85 border border-slate-800 space-y-1 text-center relative z-10">
+              <div className="text-xs font-bold text-white truncate max-w-full px-2" title={filePendingDelete.name}>
+                {filePendingDelete.name}
+              </div>
+              <div className="text-[11px] text-slate-400 font-mono">
+                {formatFileSize(filePendingDelete.size)} • {getDocumentTypeInfo(filePendingDelete.name, filePendingDelete.type).label}
+              </div>
+            </div>
+
+            {/* Ô vuông nhỏ: Xóa liên tục không cần hỏi lại */}
+            <label className="flex items-center gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 hover:border-slate-700 cursor-pointer select-none transition-colors relative z-10 group">
+              <input
+                type="checkbox"
+                checked={dontAskAgainChecked}
+                onChange={(e) => setDontAskAgainChecked(e.target.checked)}
+                className="w-4 h-4 rounded border-slate-700 text-emerald-500 focus:ring-emerald-500 bg-slate-900 cursor-pointer"
+              />
+              <span className="text-xs text-slate-300 group-hover:text-white transition-colors">
+                Xóa liên tục mà không cần hỏi lại lần sau
+              </span>
+            </label>
+
+            {/* 2 Nút: Thoát & Chấp nhận */}
+            <div className="grid grid-cols-2 gap-3 pt-1 relative z-10">
+              <button
+                type="button"
+                onClick={() => setFilePendingDelete(null)}
+                className="py-2.5 px-4 rounded-xl bg-slate-800/90 hover:bg-slate-750 text-slate-300 hover:text-white font-semibold text-xs border border-slate-700/60 transition-all cursor-pointer active:scale-95"
+              >
+                Thoát
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteFile}
+                className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-rose-600 via-rose-500 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-rose-950/50 transition-all cursor-pointer active:scale-95 border border-rose-400/30"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Chấp nhận</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* 2. BẢNG XÁC NHẬN XÓA NHIỀU TỆP (BULK DELETE MODAL)            */}
+      {/* ============================================================ */}
+      {bulkPendingDelete && (
+        <div
+          className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in select-none"
+          onClick={() => setBulkPendingDelete(null)}
+        >
+          <div
+            className="w-full max-w-sm sm:max-w-md bg-slate-900/98 border border-rose-500/40 rounded-3xl p-5 sm:p-6 shadow-2xl shadow-rose-950/40 space-y-4 animate-in zoom-in-95 text-slate-100 relative overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-center space-y-3">
+              <div className="w-14 h-14 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto border border-rose-500/30 shadow-lg">
+                <Trash2 className="w-7 h-7 text-rose-400" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base sm:text-lg font-bold text-white">
+                  Xác nhận xóa {bulkPendingDelete.count} {bulkPendingDelete.catLabel}?
+                </h3>
+                <p className="text-xs text-slate-300">
+                  Bạn có chắc chắn muốn xóa vĩnh viễn không? Hành động này sẽ giải phóng dung lượng và không thể hoàn tác.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setBulkPendingDelete(null)}
+                className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 font-semibold text-xs transition-colors cursor-pointer"
+              >
+                Thoát
+              </button>
+              <button
+                type="button"
+                onClick={confirmBulkDelete}
+                className="py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-rose-950/50 transition-all cursor-pointer active:scale-95"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Xác nhận xóa</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* 3. HỘP THÔNG BÁO Ở DƯỚI (BOTTOM FLOATING TOAST NOTIFICATION)   */}
+      {/* ============================================================ */}
+      {bottomToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] max-w-md w-[calc(100vw-2rem)] animate-in slide-in-from-bottom-5 fade-in duration-300 pointer-events-auto">
+          <div
+            className={`px-4 py-3 rounded-2xl shadow-2xl flex items-center justify-between gap-3 backdrop-blur-xl border ${
+              bottomToast.isError
+                ? 'bg-slate-900/95 border-rose-500/60 text-rose-200 shadow-rose-950/50'
+                : 'bg-slate-900/95 border-emerald-500/60 text-emerald-200 shadow-emerald-950/50'
+            }`}
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div
+                className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border ${
+                  bottomToast.isError
+                    ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                    : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                }`}
+              >
+                {bottomToast.isError ? (
+                  <AlertCircle className="w-4 h-4" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                )}
+              </div>
+              <div className="text-xs sm:text-sm font-medium leading-snug truncate">
+                {bottomToast.message}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setBottomToast(null)}
+              className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white shrink-0 cursor-pointer transition-colors"
+              title="Đóng thông báo"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}

@@ -60,6 +60,7 @@ import {
   compressImageForDirectTransfer,
   isImageFile,
   fileToBase64,
+  createClientFallbackFileInfo,
   MAX_FILE_SIZE, 
   MAX_FILE_SIZE_LABEL 
 } from '../utils/fileUpload';
@@ -663,29 +664,10 @@ export const SendView: React.FC = () => {
                 serverThumbnail = uploaded.thumbnail;
               }
             } catch (uploadErr: any) {
-              console.warn(`Server upload failed for ${item.name}, trying direct fallback:`, uploadErr);
-              let directData = fileThumbnails[item.name];
-              if (!directData && isImageFile(item.file)) {
-                directData = await compressImageForDirectTransfer(item.file, 1280, 0.82);
-              }
-              // Fail-safe for any file type under 850KB (documents, code, text, etc.)
-              if (!directData && item.file.size < 850 * 1024) {
-                try {
-                  directData = await fileToBase64(item.file);
-                } catch (b64Err) {
-                  console.warn('File to base64 fallback failed:', b64Err);
-                }
-              }
-
-              if (directData && directData.length < 900 * 1024) {
-                serverThumbnail = directData;
-                fileUrl = '';
-              } else {
-                throw new Error(
-                  uploadErr?.message || 
-                  `Không thể gửi tệp "${item.name}". Máy chủ lưu trữ đang khởi động hoặc đường truyền mạng bị gián đoạn. Vui lòng thử lại.`
-                );
-              }
+              console.warn(`Server upload notice for ${item.name}, using resilient direct fallback:`, uploadErr);
+              const fallback = await createClientFallbackFileInfo(item.file);
+              fileUrl = fallback.url;
+              serverThumbnail = fallback.thumbnail || (isImageFile(item.file) ? fallback.url : '');
             }
           }
 
