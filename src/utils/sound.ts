@@ -15,7 +15,14 @@ function getAudioContext(): AudioContext | null {
   return audioCtx;
 }
 
+let lastSendSoundTime = 0;
+let lastReceiveSoundTime = 0;
+
 export function playSendSound() {
+  const nowMs = Date.now();
+  if (nowMs - lastSendSoundTime < 600) return;
+  lastSendSoundTime = nowMs;
+
   try {
     const ctx = getAudioContext();
     if (!ctx) return;
@@ -23,25 +30,31 @@ export function playSendSound() {
     const gain = ctx.createGain();
     osc.type = 'sine';
     
-    // Upward cheerful dual-tone
+    // Crisp cheerful pop-chime for sending
     const now = ctx.currentTime;
-    osc.frequency.setValueAtTime(523.25, now); // C5
-    osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.12); // G5
+    osc.frequency.setValueAtTime(587.33, now); // D5
+    osc.frequency.exponentialRampToValueAtTime(880.00, now + 0.12); // A5
     
     gain.gain.setValueAtTime(0.08, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
     
     osc.connect(gain);
     gain.connect(ctx.destination);
     
     osc.start(now);
-    osc.stop(now + 0.26);
+    osc.stop(now + 0.23);
   } catch {
     // Graceful fallback if audio is blocked by browser autoplay policy
   }
 }
 
 export function playReceiveSound() {
+  const nowMs = Date.now();
+  // CRITICAL FIX: If user just sent a message within the last 1500ms, DO NOT play receive chime!
+  if (nowMs - lastSendSoundTime < 1500) return;
+  if (nowMs - lastReceiveSoundTime < 600) return;
+  lastReceiveSoundTime = nowMs;
+
   try {
     const ctx = getAudioContext();
     if (!ctx) return;
@@ -49,19 +62,19 @@ export function playReceiveSound() {
     const gain = ctx.createGain();
     osc.type = 'sine';
     
-    // Warm chime
+    // Warm gentle notification chime
     const now = ctx.currentTime;
     osc.frequency.setValueAtTime(659.25, now); // E5
-    osc.frequency.setValueAtTime(880.00, now + 0.08); // A5
+    osc.frequency.setValueAtTime(783.99, now + 0.08); // G5
     
-    gain.gain.setValueAtTime(0.1, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+    gain.gain.setValueAtTime(0.09, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
     
     osc.connect(gain);
     gain.connect(ctx.destination);
     
     osc.start(now);
-    osc.stop(now + 0.36);
+    osc.stop(now + 0.31);
   } catch {
     // Ignore
   }

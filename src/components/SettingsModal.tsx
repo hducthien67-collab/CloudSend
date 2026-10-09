@@ -185,7 +185,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   // 4. Liên Kết Tài Khoản (Email) với Mã Bảo Mật 6 Số (OTP)
   const isGoogleUser = Boolean(
     auth.currentUser?.providerData?.some((p: any) => p.providerId === 'google.com') ||
-    (currentUser?.email && !userProfile?.username && Boolean(currentUser?.photoURL))
+    (currentUser?.email && !userProfile?.username && !currentUser.email.includes('@cloudsend.local') && !currentUser.email.startsWith('guest_')) ||
+    Boolean(currentUser?.photoURL)
   );
   const isLinkedEmail = Boolean(currentUser?.email && !currentUser.email.includes('@cloudsend.local') && !currentUser.email.startsWith('guest_'));
   const isEmailFullyVerified = Boolean(userProfile?.isEmailVerified || (isLinkedEmail && userProfile?.linkedEmail));
@@ -562,34 +563,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 md:p-6 bg-slate-950/90 animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/90 animate-in fade-in duration-150">
       {/* Background soft ambient light (Lightweight GPU radial glow) */}
-      <div className="absolute w-[500px] h-[250px] bg-emerald-500/10 blur-3xl pointer-events-none rounded-full" />
+      <div className="absolute w-[400px] h-[200px] bg-emerald-500/10 blur-3xl pointer-events-none rounded-full" />
 
-      {/* Main Container: Wide, Spacious, Modern, GPU-Accelerated */}
+      {/* Main Container: Compact, Modern, GPU-Accelerated */}
       <div 
         id="settings-modal-card"
-        className="bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] relative z-10 gpu-smooth-card"
+        className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh] relative z-10 gpu-smooth-card"
       >
         {/* ============================================================ */}
         {/* MODAL HEADER */}
         {/* ============================================================ */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800/90 bg-slate-950/80 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-500/10 text-emerald-400 border border-emerald-500/30 shadow-inner">
-              <Sliders className="w-5 h-5 text-emerald-400" />
+        <div className="flex items-center justify-between px-3 py-2 sm:px-4 sm:py-2.5 border-b border-slate-800/90 bg-slate-950/80 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="p-1.5 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/10 text-emerald-400 border border-emerald-500/30 shadow-inner shrink-0">
+              <Sliders className="w-4 h-4 text-emerald-400" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-black tracking-tight text-white">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h2 className="text-xs sm:text-sm font-bold tracking-tight text-white truncate">
                   Cài Đặt Hệ Thống & Tùy Biến
                 </h2>
-                <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                <span className="text-[9px] font-mono uppercase px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 shrink-0">
                   v2.5
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Quản lý tài khoản, phiên đăng nhập, phần cứng, Smart TV và khung tự thiết kế
+              <p className="text-[10.5px] text-slate-400 truncate hidden sm:block">
+                Quản lý tài khoản, phiên đăng nhập, phần cứng và tùy biến
               </p>
             </div>
           </div>
@@ -597,29 +598,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <button
             id="close-settings-btn"
             onClick={onClose}
-            className="p-2.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors flex items-center justify-center min-h-[42px] min-w-[42px] active:scale-95"
+            className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors flex items-center justify-center min-h-[30px] min-w-[30px] active:scale-95 shrink-0"
             title="Đóng cửa sổ"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* ============================================================ */}
-        {/* MODERN BIG TAB NAVIGATION BAR */}
+        {/* COMPACT TAB NAVIGATION BAR */}
         {/* ============================================================ */}
-        <div className="px-6 py-2.5 bg-slate-950/60 border-b border-slate-800/80 shrink-0 overflow-x-auto no-scrollbar">
-          <div className="flex items-center gap-2 min-w-max">
+        <div className="px-2.5 py-1.5 sm:px-4 sm:py-2 bg-slate-950/60 border-b border-slate-800/80 shrink-0 overflow-x-auto no-scrollbar">
+          <div className="flex items-center gap-1 sm:gap-1.5 min-w-max">
             {/* TAB 1: THIẾT BỊ & MẠNG */}
             <button
               type="button"
               onClick={() => setActiveTab('device')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors duration-150 active:scale-95 ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs font-semibold transition-colors duration-150 active:scale-95 ${
                 activeTab === 'device'
-                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20 font-bold'
+                  ? 'bg-emerald-500 text-slate-950 shadow-sm shadow-emerald-500/20 font-bold'
                   : 'bg-slate-900 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800'
               }`}
             >
-              <Cpu className="w-4 h-4" />
+              <Cpu className="w-3.5 h-3.5" />
               <span>Thiết Bị & Mạng</span>
             </button>
 
@@ -627,13 +628,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('display_tv')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors duration-150 active:scale-95 ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs font-semibold transition-colors duration-150 active:scale-95 ${
                 activeTab === 'display_tv'
-                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-bold'
+                  ? 'bg-amber-500 text-slate-950 shadow-sm shadow-amber-500/20 font-bold'
                   : 'bg-slate-900 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800'
               }`}
             >
-              <Tv className="w-4 h-4" />
+              <Tv className="w-3.5 h-3.5" />
               <span>Hiển Thị & Smart TV</span>
             </button>
 
@@ -641,31 +642,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('custom_design')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors duration-150 active:scale-95 relative ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs font-semibold transition-colors duration-150 active:scale-95 relative ${
                 activeTab === 'custom_design'
-                  ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30 font-bold ring-2 ring-purple-400/50'
+                  ? 'bg-purple-600 text-white shadow-sm shadow-purple-600/30 font-bold ring-1 ring-purple-400/50'
                   : 'bg-slate-900 text-purple-300 hover:text-white hover:bg-slate-800 border border-purple-500/30'
               }`}
             >
-              <Wand2 className="w-4 h-4 text-purple-300" />
-              <span>Khung Tự Thiết Kế</span>
-              <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-purple-400 text-slate-950 font-bold">
-                Mới
-              </span>
+              <Palette className="w-3.5 h-3.5" />
+              <span>Khung Thiết Kế</span>
             </button>
 
-            {/* TAB 4: TÀI KHOẢN & NỘI QUY (VỚI 6 THANH CHI TIẾT) */}
+            {/* TAB 4: TÀI KHOẢN & PHIÊN ĐĂNG NHẬP */}
             <button
               type="button"
               onClick={() => setActiveTab('account_rules')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors duration-150 active:scale-95 ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs font-semibold transition-colors duration-150 active:scale-95 relative ${
                 activeTab === 'account_rules'
-                  ? 'bg-teal-500 text-slate-950 shadow-md shadow-teal-500/20 font-bold'
+                  ? 'bg-teal-500 text-slate-950 shadow-sm shadow-teal-500/20 font-bold'
                   : 'bg-slate-900 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800'
               }`}
             >
-              <Shield className="w-4 h-4" />
-              <span>Tài Khoản & Nội Quy</span>
+              <UserCheck className="w-3.5 h-3.5" />
+              <span>Tài Khoản & Phiên</span>
             </button>
           </div>
         </div>
@@ -673,40 +671,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* ============================================================ */}
         {/* MODAL BODY (CONTENT BY TAB) */}
         {/* ============================================================ */}
-        <div className="flex-1 overflow-y-auto p-5 sm:p-7 space-y-6 smooth-modal-scroll">
+        <div className="flex-1 overflow-y-auto no-scrollbar p-3.5 sm:p-4 space-y-3 sm:space-y-4 smooth-modal-scroll">
           
           {/* ------------------------------------------------------------ */}
           {/* TAB 1: THIẾT BỊ & MẠNG */}
           {/* ------------------------------------------------------------ */}
           {activeTab === 'device' && (
-            <div className="space-y-6 animate-in fade-in duration-200">
+            <div className="space-y-3 sm:space-y-3.5 animate-in fade-in duration-200">
               
               {/* 1. ĐỊNH DANH THIẾT BỊ */}
-              <div className="bg-slate-950/60 border border-slate-800/90 rounded-2xl p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
-                    <Cpu className="w-4 h-4" />
-                    Định danh thiết bị (LocalSend Alias)
+              <div className="bg-slate-950/60 border border-slate-800/90 rounded-xl p-3 sm:p-3.5 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-[11px] sm:text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5 min-w-0">
+                    <Cpu className="w-3.5 h-3.5 shrink-0" />
+                    <span>Định danh thiết bị</span>
                   </h3>
                   <button
                     type="button"
                     onClick={handleRandomizeDeviceName}
-                    className="text-xs text-slate-400 hover:text-emerald-400 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:border-emerald-500/40 transition-colors"
+                    className="text-[10.5px] text-slate-400 hover:text-emerald-400 flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-emerald-500/40 transition-colors shrink-0"
                     title="Tạo tên ngẫu nhiên vui nhộn"
                   >
-                    <Shuffle className="w-3.5 h-3.5" />
+                    <Shuffle className="w-3 h-3" />
                     <span>Tên ngẫu nhiên</span>
                   </button>
                 </div>
 
                 <div>
-                  <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
-                    <label className="text-xs text-slate-300 font-medium">
-                      Tên thiết bị hiển thị với người khác trong mạng
+                  <div className="flex flex-wrap items-center justify-between mb-1 gap-1">
+                    <label className="text-[11px] text-slate-300 font-medium min-w-0">
+                      Tên thiết bị hiển thị trong mạng
                     </label>
-                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                      <RefreshCw className="w-3 h-3 text-emerald-400" />
-                      Đồng bộ trực tiếp với Tài khoản & Nội quy
+                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 inline-flex items-center gap-1 shrink-0">
+                      <RefreshCw className="w-2.5 h-2.5 text-emerald-400" />
+                      <span>Đồng bộ mạng</span>
                     </span>
                   </div>
                   <div className="relative">
@@ -720,37 +718,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         setEditDisplayName(val);
                       }}
                       placeholder="Ví dụ: Laptop Bạc Hà, PC Hổ Phách..."
-                      className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700/80 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700/80 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
                     />
                   </div>
                 </div>
 
                 {/* Phần cứng tự động nhận diện */}
                 <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-xs text-slate-300 font-medium flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center justify-between mb-1 gap-1">
+                    <label className="text-[11px] text-slate-300 font-medium flex items-center gap-1 min-w-0">
                       <span>Loại phần cứng đã nhận diện</span>
                     </label>
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/25">
-                      <Lock className="w-3 h-3" />
-                      Tự động khóa phần cứng
+                    <span className="inline-flex items-center gap-1 text-[9.5px] font-semibold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded-full border border-emerald-500/25 shrink-0">
+                      <Lock className="w-2.5 h-2.5" />
+                      Khóa phần cứng
                     </span>
                   </div>
                   
-                  <div className="flex items-center gap-3.5 p-3.5 rounded-xl bg-slate-900/90 border border-slate-800">
-                    <div className="w-11 h-11 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0 shadow-inner">
-                      {renderCurrentDeviceIcon('w-6 h-6')}
+                  <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-slate-900/90 border border-slate-800">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0 shadow-inner">
+                      {renderCurrentDeviceIcon('w-4 h-4')}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-white">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs font-bold text-white truncate">
                           {deviceInfo.label}
                         </span>
-                        <span className="text-[10px] font-mono text-emerald-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                        <span className="text-[9px] font-mono text-emerald-400 bg-slate-950 px-1.5 py-0.2 rounded border border-slate-800 shrink-0">
                           Auto-detected
                         </span>
                       </div>
-                      <p className="text-xs text-slate-400 mt-0.5">
+                      <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-2">
                         {deviceInfo.description}
                       </p>
                     </div>
@@ -759,29 +757,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
 
               {/* 2. MÁY CHỦ TRUNG GIAN & TRẠNG THÁI RELAY */}
-              <div className="bg-slate-950/60 border border-slate-800/90 rounded-2xl p-5 space-y-3">
-                <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
-                  <Server className="w-4 h-4" />
+              <div className="bg-slate-950/60 border border-slate-800/90 rounded-xl p-3 sm:p-3.5 space-y-2.5">
+                <h3 className="text-[11px] sm:text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Server className="w-3.5 h-3.5" />
                   Máy chủ trung gian & Hạ tầng Relay
                 </h3>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                  <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                    <div className="text-[11px] text-slate-400">Trạng thái kết nối</div>
-                    <div className="text-xs font-bold text-emerald-400 mt-1 flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-0.5">
+                  <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+                    <div className="text-[10px] text-slate-400">Trạng thái kết nối</div>
+                    <div className="text-[11px] font-bold text-emerald-400 mt-0.5 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                       Trực tuyến 24/7
                     </div>
                   </div>
-                  <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                    <div className="text-[11px] text-slate-400">Hạ tầng Cloud</div>
-                    <div className="text-xs font-semibold text-white mt-1">
+                  <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+                    <div className="text-[10px] text-slate-400">Hạ tầng Cloud</div>
+                    <div className="text-[11px] font-semibold text-white mt-0.5">
                       Firestore Cloud Relay
                     </div>
                   </div>
-                  <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                    <div className="text-[11px] text-slate-400">Giao thức bảo mật</div>
-                    <div className="text-xs font-semibold text-slate-200 mt-1 font-mono">
+                  <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+                    <div className="text-[10px] text-slate-400">Giao thức bảo mật</div>
+                    <div className="text-[11px] font-semibold text-slate-200 mt-0.5 font-mono">
                       TLS 1.3 End-to-End
                     </div>
                   </div>
@@ -789,39 +787,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
 
               {/* 3. TÙY CHỌN TỰ ĐỘNG NHẬN TỆP & ÂM THANH */}
-              <div className="bg-slate-950/60 border border-slate-800/90 rounded-2xl p-5 space-y-3.5">
-                <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
-                  <DownloadCloud className="w-4 h-4" />
+              <div className="bg-slate-950/60 border border-slate-800/90 rounded-xl p-3 sm:p-3.5 space-y-2.5">
+                <h3 className="text-[11px] sm:text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <DownloadCloud className="w-3.5 h-3.5" />
                   Tùy chọn nhận tệp & Âm thanh
                 </h3>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label className="flex items-center justify-between p-3.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 cursor-pointer transition-colors">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <label className="flex items-center justify-between p-2.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 cursor-pointer transition-colors">
                     <div className="pr-2">
-                      <div className="text-xs sm:text-sm font-semibold text-white">Tự động nhận tệp (Quick Save)</div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">Tự động chấp nhận tệp từ bạn bè mà không cần duyệt thủ công</div>
+                      <div className="text-xs font-semibold text-white">Tự động nhận tệp (Quick Save)</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">Tự động chấp nhận tệp từ bạn bè mà không cần duyệt</div>
                     </div>
                     <input
                       type="checkbox"
                       checked={autoAccept}
                       onChange={(e) => setAutoAccept(e.target.checked)}
-                      className="w-5 h-5 rounded text-emerald-500 bg-slate-950 border-slate-700 focus:ring-emerald-500 shrink-0 ml-2"
+                      className="w-4 h-4 rounded text-emerald-500 bg-slate-950 border-slate-700 focus:ring-emerald-500 shrink-0 ml-2"
                     />
                   </label>
 
-                  <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-900 border border-slate-800">
+                  <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-900 border border-slate-800">
                     <div className="pr-2">
-                      <div className="text-xs sm:text-sm font-semibold text-white flex items-center gap-1.5">
-                        {soundEnabled ? <Volume2 className="w-4 h-4 text-emerald-400" /> : <VolumeX className="w-4 h-4 text-slate-500" />}
+                      <div className="text-xs font-semibold text-white flex items-center gap-1.5">
+                        {soundEnabled ? <Volume2 className="w-3.5 h-3.5 text-emerald-400" /> : <VolumeX className="w-3.5 h-3.5 text-slate-500" />}
                         Âm thanh thông báo
                       </div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">Chuông nhẹ khi gửi/nhận tệp & tin nhắn</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">Chuông nhẹ khi gửi/nhận tệp & tin nhắn</div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         type="button"
                         onClick={handleTestSound}
-                        className="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                        className="px-2 py-0.5 text-[11px] rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
                       >
                         Thử chuông
                       </button>
@@ -829,7 +827,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         type="checkbox"
                         checked={soundEnabled}
                         onChange={(e) => setSoundEnabled(e.target.checked)}
-                        className="w-5 h-5 rounded text-emerald-500 bg-slate-950 border-slate-700 focus:ring-emerald-500"
+                        className="w-4 h-4 rounded text-emerald-500 bg-slate-950 border-slate-700 focus:ring-emerald-500"
                       />
                     </div>
                   </div>
@@ -842,66 +840,66 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* TAB 2: HIỂN THỊ & SMART TV */}
           {/* ------------------------------------------------------------ */}
           {activeTab === 'display_tv' && (
-            <div className="space-y-6 animate-in fade-in duration-200">
+            <div className="space-y-3 sm:space-y-3.5 animate-in fade-in duration-200">
               
               {/* CHẾ ĐỘ SMART TV & PHÓNG TO DPI */}
-              <div className="bg-slate-950/60 border border-slate-800/90 rounded-2xl p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
-                    <Tv className="w-4 h-4" />
-                    Chế độ Smart TV & Sửa lỗi DPI Màn hình lớn
+              <div className="bg-slate-950/60 border border-slate-800/90 rounded-xl p-3 sm:p-3.5 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                  <h3 className="text-[11px] sm:text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Tv className="w-3.5 h-3.5 shrink-0" />
+                    <span>Chế độ Smart TV & Sửa lỗi DPI Màn hình lớn</span>
                   </h3>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold">
+                  <span className="text-[9.5px] font-mono px-2 py-0.2 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold whitespace-nowrap shrink-0 w-fit">
                     10-Foot UI
                   </span>
                 </div>
 
                 {/* Nút gạt bật tắt TV Mode */}
-                <label className="flex items-center justify-between p-4 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 cursor-pointer transition-colors">
-                  <div className="pr-4">
-                    <div className="text-sm font-bold text-white flex items-center gap-2">
+                <label className="flex items-center justify-between p-2.5 sm:p-3 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 cursor-pointer transition-colors gap-2.5">
+                  <div className="pr-2 min-w-0">
+                    <div className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
                       <span>Kích hoạt Chế độ Tivi (Smart TV Mode)</span>
                       {tvModeEnabled && (
-                        <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 whitespace-nowrap">
                           Đang bật
                         </span>
                       )}
                     </div>
-                    <div className="text-xs text-slate-400 mt-1">
-                      Tối ưu giao diện cho màn hình Tivi (Samsung Tizen, LG WebOS, Android TV, Sony, TCL). Tự động nhận diện thiết bị là Smart TV trên mạng và hỗ trợ điều khiển Remote D-Pad.
+                    <div className="text-[10.5px] text-slate-400 mt-0.5 leading-snug">
+                      Tối ưu giao diện cho màn hình Tivi (Samsung Tizen, LG WebOS, Android TV, Sony, TCL). Tự động nhận diện thiết bị là Smart TV.
                     </div>
                   </div>
                   <input
                     type="checkbox"
                     checked={tvModeEnabled}
                     onChange={(e) => setTvModeEnabled(e.target.checked)}
-                    className="w-5 h-5 rounded text-amber-500 bg-slate-950 border-slate-700 focus:ring-amber-500 shrink-0"
+                    className="w-4 h-4 rounded text-amber-500 bg-slate-950 border-slate-700 focus:ring-amber-500 shrink-0 cursor-pointer"
                   />
                 </label>
 
                 {/* Bộ chọn Tỷ lệ phóng to DPI TV */}
-                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                      <Sliders className="w-4 h-4 text-amber-400" />
-                      Tỷ lệ phóng to DPI TV (Khắc phục lỗi chữ nhỏ trên TV)
+                <div className="p-2.5 sm:p-3 rounded-lg bg-slate-900 border border-slate-800 space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span className="text-[11px] font-bold text-white flex items-center gap-1.5">
+                      <Sliders className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>Tỷ lệ phóng to DPI TV</span>
                     </span>
-                    <span className="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20">
+                    <span className="text-[10px] font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.2 rounded border border-amber-500/20 whitespace-nowrap shrink-0 w-fit">
                       {Math.round(tvDpiScale * 100)}%
                     </span>
                   </div>
 
-                  <p className="text-xs text-slate-400">
-                    Trình duyệt TV thường bị lỗi DPI khiến chữ và nút bấm quá nhỏ khi nhìn từ xa. Hãy chọn mức phóng to phù hợp với kích thước TV của bạn:
+                  <p className="text-[10.5px] text-slate-400 leading-snug">
+                    Chọn mức phóng to phù hợp với kích thước TV của bạn:
                   </p>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 pt-0.5">
                     {[
                       { scale: 1.0, label: '100%', note: 'Chuẩn PC' },
                       { scale: 1.25, label: '125%', note: 'TV 32-43"' },
-                      { scale: 1.4, label: '140%', note: 'TV 49-55" (Chuẩn)' },
+                      { scale: 1.4, label: '140%', note: 'TV 49-55"' },
                       { scale: 1.6, label: '160%', note: 'TV 65-75"' },
-                      { scale: 1.85, label: '185%', note: 'TV 4K Siêu to' },
+                      { scale: 1.85, label: '185%', note: 'TV 4K' },
                     ].map((preset) => {
                       const isSelected = Math.abs(tvDpiScale - preset.scale) < 0.05;
                       return (
@@ -912,14 +910,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             setTvDpiScale(preset.scale);
                             if (!tvModeEnabled) setTvModeEnabled(true);
                           }}
-                          className={`p-3 rounded-xl text-center border transition-all ${
+                          className={`p-2 rounded-lg text-center border transition-all ${
                             isSelected
-                              ? 'bg-amber-500/20 border-amber-500 text-amber-300 shadow-md font-bold'
+                              ? 'bg-amber-500/20 border-amber-500 text-amber-300 shadow-sm font-bold'
                               : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
                           }`}
                         >
-                          <div className="text-sm font-bold">{preset.label}</div>
-                          <div className="text-[10px] text-slate-400 mt-0.5">{preset.note}</div>
+                          <div className="text-xs font-bold">{preset.label}</div>
+                          <div className="text-[9px] text-slate-400 mt-0.2">{preset.note}</div>
                         </button>
                       );
                     })}
@@ -927,22 +925,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
 
                 {/* Hướng dẫn phím Remote TV */}
-                <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-300 space-y-2">
-                  <div className="font-bold text-amber-300 flex items-center gap-2">
-                    <span>🎮 Hỗ trợ phím Điều khiển Tivi (Remote Control D-Pad)</span>
+                <div className="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 text-[10.5px] text-slate-300 space-y-1.5">
+                  <div className="font-bold text-amber-300 flex items-center gap-1.5">
+                    <span>🎮 Phím điều khiển Remote Tivi</span>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 text-slate-400">
-                    <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800/80">
-                      <strong className="text-white block mb-0.5">◀ / ▶ Mũi tên Trái - Phải:</strong>
-                      Chuyển nhanh tab Gửi, Nhận & Chat
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 pt-0.5 text-slate-400">
+                    <div className="p-2 rounded-md bg-slate-950 border border-slate-800/80">
+                      <strong className="text-white block mb-0.2">◀ / ▶ Trái - Phải:</strong>
+                      Chuyển tab nhanh
                     </div>
-                    <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800/80">
-                      <strong className="text-white block mb-0.5">🔘 Nút OK / Enter:</strong>
-                      Chọn nút, gửi và tải tệp tin
+                    <div className="p-2 rounded-md bg-slate-950 border border-slate-800/80">
+                      <strong className="text-white block mb-0.2">🔘 OK / Enter:</strong>
+                      Chọn và gửi tệp
                     </div>
-                    <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800/80">
-                      <strong className="text-white block mb-0.5">↩ Phím Back / Return:</strong>
-                      Đóng cửa sổ cài đặt hoặc thoát modal
+                    <div className="p-2 rounded-md bg-slate-950 border border-slate-800/80">
+                      <strong className="text-white block mb-0.2">↩ Back / Return:</strong>
+                      Đóng cửa sổ
                     </div>
                   </div>
                 </div>
@@ -954,28 +952,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* TAB 3: KHUNG TỰ THIẾT KẾ (DESIGN STUDIO & CANVAS PLAYGROUND) */}
           {/* ------------------------------------------------------------ */}
           {activeTab === 'custom_design' && (
-            <div className="space-y-6 animate-in fade-in duration-200">
+            <div className="space-y-3 sm:space-y-3.5 animate-in fade-in duration-200">
               
               {/* STUDIO LAUNCH BANNER - TẠM KHÓA ĐANG PHÁT TRIỂN */}
               <div 
                 onClick={() => showUnderDevelopmentToast()}
-                className="p-5 rounded-2xl bg-gradient-to-r from-purple-950/60 via-slate-900 to-indigo-950/60 border border-purple-500/30 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer hover:border-amber-500/40 transition-all"
+                className="p-3 sm:p-3.5 rounded-xl bg-gradient-to-r from-purple-950/60 via-slate-900 to-indigo-950/60 border border-purple-500/30 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer hover:border-amber-500/40 transition-all"
               >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="p-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                      <Lock className="w-5 h-5 text-amber-400" />
+                <div className="space-y-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="p-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+                      <Lock className="w-3.5 h-3.5 text-amber-400" />
                     </span>
-                    <h3 className="text-base font-black text-white tracking-tight">
+                    <h3 className="text-xs sm:text-sm font-bold text-white tracking-tight">
                       Studio Tự Thiết Kế Toàn Màn Hình
                     </h3>
-                    <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30 flex items-center gap-1">
-                      <Lock className="w-3 h-3 text-amber-400" />
-                      TẠM KHÓA • ĐANG PHÁT TRIỂN
+                    <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30 inline-flex items-center gap-1 shrink-0">
+                      <Lock className="w-2.5 h-2.5 text-amber-400" />
+                      <span>ĐANG PHÁT TRIỂN</span>
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400">
-                    Tính năng đang được hoàn thiện. Nhấp vào đây sẽ có thông báo nhắc nhở tính năng đang trong quá trình phát triển.
+                  <p className="text-[10.5px] text-slate-400 leading-snug">
+                    Tính năng đang được hoàn thiện và sẽ sớm ra mắt trong bản cập nhật tới.
                   </p>
                 </div>
 
@@ -986,38 +984,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       e.stopPropagation();
                       showUnderDevelopmentToast();
                     }}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs sm:text-sm font-bold shadow-md border border-amber-500/30 transition-all active:scale-95"
+                    className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold shadow-sm border border-amber-500/30 transition-all active:scale-95"
                   >
-                    <Lock className="w-4 h-4 text-amber-400" />
+                    <Lock className="w-3.5 h-3.5 text-amber-400" />
                     <span>Mở Studio (Đang phát triển)</span>
                   </button>
                 </div>
               </div>
 
               {/* Giao diện 2 cột: Cột trái tùy chỉnh, Cột phải Khung Xem Trước Thời Gian Thực */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-3.5">
                 
                 {/* CỘT TRÁI (7 CỘT): CÁC CÔNG CỤ TÙY BIẾN */}
-                <div className="lg:col-span-7 space-y-4">
+                <div className="lg:col-span-7 space-y-3">
                   
                   {/* 1. Chọn Theme Preset */}
-                  <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 space-y-3">
+                  <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 space-y-2">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                      <label className="text-[11px] font-bold text-slate-200 flex items-center gap-1.5">
                         <Palette className="w-3.5 h-3.5 text-purple-400" />
                         <span>Chủ đề phong cách (Theme Presets)</span>
                       </label>
                       <button
                         type="button"
                         onClick={() => showUnderDevelopmentToast()}
-                        className="text-[11px] text-slate-400 hover:text-amber-300 font-semibold flex items-center gap-1 cursor-pointer"
+                        className="text-[10px] text-slate-400 hover:text-amber-300 font-semibold flex items-center gap-1 cursor-pointer"
                       >
-                        <Lock className="w-3 h-3 text-amber-400" />
-                        <span>Mở thư viện mẫu (Đang phát triển)</span>
+                        <Lock className="w-2.5 h-2.5 text-amber-400" />
+                        <span>Thư viện mẫu</span>
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-3 gap-1.5">
                       {THEME_PRESETS.map((p) => {
                         const isSelected = themeStyle === p.id;
                         return (
@@ -1029,15 +1027,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               setAvatarColor(p.color);
                               setCustomHexColor(p.color);
                             }}
-                            className={`p-2.5 rounded-xl border text-left transition-all ${
+                            className={`p-2 rounded-lg border text-left transition-all ${
                               isSelected
-                                ? 'bg-slate-900 border-purple-400 ring-2 ring-purple-500/30 text-white font-bold shadow-md'
+                                ? 'bg-slate-900 border-purple-400 ring-1 ring-purple-500/30 text-white font-bold shadow-sm'
                                 : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
                             }`}
                           >
-                            <div className="flex items-center gap-2">
-                              <span className="w-3.5 h-3.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: p.color }} />
-                              <span className="text-xs truncate">{p.name}</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-3 h-3 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: p.color }} />
+                              <span className="text-[11px] truncate">{p.name}</span>
                             </div>
                           </button>
                         );
@@ -1046,44 +1044,44 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   {/* 2. Chọn Kiểu Khung Thẻ (Card Style) */}
-                  <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 space-y-3">
-                    <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                  <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 space-y-2">
+                    <label className="text-[11px] font-bold text-slate-200 flex items-center gap-1.5">
                       <Layers className="w-3.5 h-3.5 text-purple-400" />
                       <span>Kiểu Khung Thẻ (Card Style)</span>
                     </label>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                       {[
-                        { id: 'glow', label: 'Phát sáng Neon', desc: 'Viền sáng tỏa' },
-                        { id: 'glass', label: 'Kính mờ Glass', desc: 'Hiệu ứng mờ ảo' },
-                        { id: 'solid', label: 'Đen sâu OLED', desc: 'Độ tương phản cao' },
-                        { id: 'minimal', label: 'Tối giản', desc: 'Gọn gàng sạch sẽ' },
+                        { id: 'glow', label: 'Neon', desc: 'Viền sáng tỏa' },
+                        { id: 'glass', label: 'Glass', desc: 'Hiệu ứng mờ' },
+                        { id: 'solid', label: 'OLED', desc: 'Đen sâu' },
+                        { id: 'minimal', label: 'Tối giản', desc: 'Gọn gàng' },
                       ].map((style) => (
                         <button
                           key={style.id}
                           type="button"
                           onClick={() => setCardStyle(style.id as any)}
-                          className={`p-2.5 rounded-xl border text-left transition-all ${
+                          className={`p-2 rounded-lg border text-left transition-all ${
                             cardStyle === style.id
                               ? 'bg-purple-500/20 border-purple-500 text-purple-200 font-bold ring-1 ring-purple-500/40'
                               : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
                           }`}
                         >
-                          <div className="text-xs font-bold">{style.label}</div>
-                          <div className="text-[10px] text-slate-400 mt-0.5">{style.desc}</div>
+                          <div className="text-[11px] font-bold">{style.label}</div>
+                          <div className="text-[9.5px] text-slate-400 mt-0.2">{style.desc}</div>
                         </button>
                       ))}
                     </div>
                   </div>
 
                   {/* 3. Màu sắc Avatar & Đổi ảnh đại diện */}
-                  <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 space-y-3">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                  <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between flex-wrap gap-1.5">
+                      <label className="text-[11px] font-bold text-slate-200 flex items-center gap-1.5">
                         <Flame className="w-3.5 h-3.5 text-purple-400" />
                         <span>Màu sắc & Ảnh đại diện</span>
                       </label>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         <input 
                           type="file" 
                           ref={avatarFileInputRef} 
@@ -1094,10 +1092,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <button
                           type="button"
                           onClick={() => avatarFileInputRef.current?.click()}
-                          className="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 transition-all cursor-pointer"
+                          className="text-[10.5px] text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 transition-all cursor-pointer"
                         >
                           <Camera className="w-3 h-3" />
-                          <span>Đổi / Tải ảnh từ máy</span>
+                          <span>Đổi / Tải ảnh</span>
                         </button>
                         {customAvatarUrl && (
                           <button
@@ -1106,8 +1104,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               setCustomAvatarUrl(undefined);
                               updateSettings({ customAvatarUrl: undefined });
                             }}
-                            className="text-[10px] text-rose-400 hover:text-rose-300 font-semibold px-2 py-1 rounded-lg bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 transition-all cursor-pointer"
-                            title="Xóa ảnh đại diện tùy chỉnh để dùng chữ cái mặc định"
+                            className="text-[9.5px] text-rose-400 hover:text-rose-300 font-semibold px-1.5 py-0.5 rounded-md bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 transition-all cursor-pointer"
+                            title="Xóa ảnh đại diện tùy chỉnh"
                           >
                             Xóa ảnh
                           </button>
@@ -1115,7 +1113,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       {AVATAR_COLORS.map((col) => (
                         <button
                           key={col}
@@ -1124,17 +1122,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             setAvatarColor(col);
                             setCustomHexColor(col);
                           }}
-                          className={`w-8 h-8 rounded-xl transition-all flex items-center justify-center ${
-                            avatarColor === col ? 'ring-2 ring-white scale-110 shadow-lg' : 'opacity-70 hover:opacity-100'
+                          className={`w-6 h-6 rounded-lg transition-all flex items-center justify-center ${
+                            avatarColor === col ? 'ring-2 ring-white scale-110 shadow-sm' : 'opacity-70 hover:opacity-100'
                           }`}
                           style={{ backgroundColor: col }}
                         >
-                          {avatarColor === col && <Check className="w-4 h-4 text-white stroke-[3]" />}
+                          {avatarColor === col && <Check className="w-3 h-3 text-white stroke-[3]" />}
                         </button>
                       ))}
 
                       {/* Tùy chỉnh màu HEX tự do */}
-                      <div className="flex items-center gap-1.5 pl-2 border-l border-slate-800">
+                      <div className="flex items-center gap-1 pl-1.5 border-l border-slate-800">
                         <input
                           type="color"
                           value={customHexColor}
@@ -1142,18 +1140,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             setCustomHexColor(e.target.value);
                             setAvatarColor(e.target.value);
                           }}
-                          className="w-8 h-8 rounded-xl cursor-pointer bg-transparent border-0"
+                          className="w-6 h-6 rounded-lg cursor-pointer bg-transparent border-0"
                           title="Chọn màu tự do bất kỳ"
                         />
-                        <span className="text-[11px] text-slate-400 font-mono">Tự do</span>
+                        <span className="text-[10px] text-slate-400 font-mono">Tự do</span>
                       </div>
                     </div>
                   </div>
 
                   {/* 4. Huy hiệu & Danh xưng cá nhân */}
-                  <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 space-y-3">
+                  <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 space-y-2">
                     <div>
-                      <label className="block text-xs font-bold text-slate-200 mb-1">
+                      <label className="block text-[11px] font-bold text-slate-200 mb-0.5">
                         Huy hiệu hiển thị (Custom Badge)
                       </label>
                       <input
@@ -1162,12 +1160,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         value={customBadgeText}
                         onChange={(e) => setCustomBadgeText(e.target.value)}
                         placeholder="Ví dụ: VIP Relay, Chuyên Gia Tốc Độ..."
-                        className="w-full px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                        className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-slate-200 mb-1">
+                      <label className="block text-[11px] font-bold text-slate-200 mb-0.5">
                         Tiểu sử / Lời chào (Bio Status)
                       </label>
                       <input
@@ -1176,7 +1174,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         value={customBio}
                         onChange={(e) => setCustomBio(e.target.value)}
                         placeholder="Ví dụ: Đang online, sẵn sàng nhận file..."
-                        className="w-full px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                        className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
                       />
                     </div>
                   </div>
@@ -1184,16 +1182,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 {/* CỘT PHẢI (5 CỘT): KHUNG XEM TRƯỚC TRỰC TIẾP (LIVE PREVIEW CANVAS) */}
                 <div className="lg:col-span-5 flex flex-col">
-                  <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-5 flex-1 flex flex-col justify-between space-y-4">
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
-                      <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                        <Eye className="w-3.5 h-3.5 text-purple-400" />
-                        Khung Xem Trước Trực Tiếp
+                  <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 sm:p-3.5 flex-1 flex flex-col justify-between space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-1.5 border-b border-slate-800/80 gap-1.5">
+                      <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                        <Eye className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                        <span>Khung Xem Trước Trực Tiếp</span>
                       </span>
                       <button
                         type="button"
                         onClick={() => showUnderDevelopmentToast()}
-                        className="text-[10px] text-amber-300 font-mono flex items-center gap-1 bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-500/30 cursor-pointer hover:bg-amber-500/25 transition-all"
+                        className="text-[9.5px] text-amber-300 font-mono flex items-center gap-1 bg-amber-500/15 px-2 py-0.2 rounded-full border border-amber-500/30 cursor-pointer hover:bg-amber-500/25 transition-all whitespace-nowrap shrink-0 w-fit"
                       >
                         <Lock className="w-2.5 h-2.5 text-amber-400" />
                         <span>Studio (Đang phát triển)</span>
@@ -1201,9 +1199,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
 
                     {/* KHUNG THẺ THỰC TẾ (THE DESIGN CANVAS) */}
-                    <div className="my-auto py-4">
+                    <div className="my-auto py-2">
                       <div 
-                        className={`rounded-2xl p-5 border transition-all duration-300 relative overflow-hidden group hover:scale-[1.02] shadow-2xl ${
+                        className={`rounded-xl p-3 sm:p-3.5 border transition-all duration-300 relative overflow-hidden group shadow-lg ${
                           cardStyle === 'glow' ? `bg-gradient-to-br ${currentThemeObj.gradient} ${currentThemeObj.border} ${currentThemeObj.glow}` :
                           cardStyle === 'glass' ? 'bg-slate-900/60 backdrop-blur-xl border-slate-700/80 shadow-slate-900/50' :
                           cardStyle === 'solid' ? 'bg-black border-slate-800' :
@@ -1211,10 +1209,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         }`}
                       >
                         {/* Header của thẻ Canvas */}
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center gap-3">
+                        <div className="flex items-start justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
                             <div 
-                              className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-black text-lg shadow-lg relative shrink-0 ring-2 ring-white/20 overflow-hidden"
+                              className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-md relative shrink-0 ring-1 ring-white/20 overflow-hidden"
                               style={{ backgroundColor: avatarColor }}
                             >
                               {(customAvatarUrl || currentUser?.photoURL) ? (
@@ -1228,13 +1226,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               ) : (
                                 (currentUser?.displayName || currentUser?.email || 'U')[0].toUpperCase()
                               )}
-                              <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 ring-2 ring-slate-950" />
+                              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-1 ring-slate-950" />
                             </div>
-                            <div className="min-w-0">
-                              <div className="text-sm font-bold text-white truncate flex items-center gap-1.5">
-                                <span>{currentUser?.displayName || 'Người dùng'}</span>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs font-bold text-white truncate flex items-center gap-1">
+                                <span className="truncate">{currentUser?.displayName || 'Người dùng'}</span>
                               </div>
-                              <div className="text-xs text-slate-400 truncate font-mono">
+                              <div className="text-[10.5px] text-slate-400 truncate font-mono">
                                 {deviceName || 'Tên thiết bị'}
                               </div>
                             </div>
@@ -1242,7 +1240,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                           {/* Huy hiệu tùy chỉnh */}
                           <span 
-                            className="text-[10px] font-bold px-2 py-0.5 rounded-full border shadow-sm truncate max-w-[130px]"
+                            className="text-[9.5px] font-bold px-2 py-0.2 rounded-full border shadow-sm shrink-0 whitespace-nowrap"
                             style={{ 
                               backgroundColor: `${avatarColor}20`,
                               borderColor: `${avatarColor}60`,
@@ -1254,23 +1252,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
 
                         {/* Tiểu sử Status */}
-                        <div className="mt-3.5 pt-3 border-t border-white/10 text-xs text-slate-300 italic">
+                        <div className="mt-2.5 pt-2 border-t border-white/10 text-[11px] text-slate-300 italic truncate">
                           "{customBio || 'Sẵn sàng truyền nhận dữ liệu tốc độ cao.'}"
                         </div>
 
                         {/* Thẻ phần cứng */}
-                        <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 bg-slate-950/50 p-2 rounded-xl border border-white/5">
-                          <span className="flex items-center gap-1 text-slate-300 font-medium">
-                            {renderCurrentDeviceIcon('w-3.5 h-3.5')}
-                            {deviceInfo.label}
+                        <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400 bg-slate-950/50 p-1.5 rounded-lg border border-white/5 gap-1.5 flex-wrap">
+                          <span className="flex items-center gap-1 text-slate-300 font-medium truncate">
+                            {renderCurrentDeviceIcon('w-3 h-3 shrink-0')}
+                            <span className="truncate">{deviceInfo.label}</span>
                           </span>
-                          <span className="text-emerald-400 font-mono font-bold">Relay Ready</span>
+                          <span className="text-emerald-400 font-mono font-bold whitespace-nowrap shrink-0">Relay Ready</span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="text-[11px] text-slate-400 text-center italic">
-                      * Nhấn "Mở Studio Tự Thiết Kế" bên trên để vẽ, chèn ảnh từ máy tính hoặc tùy biến toàn diện.
+                    <div className="text-[10px] text-slate-400 text-center italic">
+                      * Tùy biến thời gian thực hiển thị ngay trên mạng
                     </div>
                   </div>
                 </div>
@@ -1282,20 +1280,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* TAB 4: TÀI KHOẢN & NỘI QUY (VỚI 6 THANH TÍCH HỢP ĐẦY ĐỦ) */}
           {/* ------------------------------------------------------------ */}
           {activeTab === 'account_rules' && (
-            <div className="space-y-6 animate-in fade-in duration-200">
+            <div className="space-y-3 sm:space-y-3.5 animate-in fade-in duration-200">
               
               {/* PHẦN ĐẦU: TIÊU ĐỀ KHU VỰC TÀI KHOẢN */}
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-bold text-teal-400 uppercase tracking-wider flex items-center gap-2">
-                    <User className="w-4 h-4" />
-                    Tài Khoản & Phiên Đăng Nhập (6 Chức Năng Quản Trị)
+                  <h3 className="text-xs sm:text-sm font-bold text-teal-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5" />
+                    Tài Khoản & Phiên Đăng Nhập
                   </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Quản lý danh tính, mật khẩu, liên kết email, danh sách thiết bị và đăng xuất từ xa
+                  <p className="text-[10.5px] text-slate-400 mt-0.2">
+                    Quản lý danh tính, bảo mật và đăng xuất từ xa
                   </p>
                 </div>
-                <span className="text-xs text-teal-300 font-mono bg-teal-500/10 px-2.5 py-1 rounded-full border border-teal-500/20 font-bold">
+                <span className="text-[10px] text-teal-300 font-mono bg-teal-500/10 px-2 py-0.5 rounded-full border border-teal-500/20 font-bold">
                   Account Center
                 </span>
               </div>
@@ -1303,21 +1301,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* ============================================================ */}
               {/* THANH 1: TÊN ĐĂNG NHẬP */}
               {/* ============================================================ */}
-              <div className="bg-slate-950/70 border border-slate-800/90 rounded-2xl p-4 sm:p-5 space-y-2.5 shadow-md">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="p-2 rounded-xl bg-teal-500/15 text-teal-400 border border-teal-500/30">
-                      <User className="w-4 h-4" />
+              <div className="bg-slate-950/70 border border-slate-800/90 rounded-xl p-3 sm:p-3.5 space-y-2 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="p-1.5 rounded-lg bg-teal-500/15 text-teal-400 border border-teal-500/30 shrink-0">
+                      <User className="w-3.5 h-3.5" />
                     </div>
-                    <div>
-                      <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
-                        <span>1. Tên Đăng Nhập</span>
-                        <span className="text-[10px] font-mono px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                          {isLinkedEmail ? 'Tài khoản Email' : userProfile?.username ? 'Tài khoản CloudSend' : 'Phiên Tự Do'}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h4 className="text-xs font-bold text-white">
+                          1. Tên Đăng Nhập
+                        </h4>
+                        <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold shrink-0">
+                          {isGoogleUser ? 'Gmail' : isLinkedEmail ? 'Email' : userProfile?.username ? 'CloudSend' : 'Tự Do'}
                         </span>
-                      </h4>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        Tên tài khoản duy nhất của bạn dùng để đăng nhập vào hệ thống
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-0.2 truncate">
+                        {isGoogleUser 
+                          ? 'Địa chỉ Gmail dùng để đăng nhập' 
+                          : 'Tên tài khoản duy nhất của bạn'}
                       </p>
                     </div>
                   </div>
@@ -1325,311 +1327,362 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <button
                     type="button"
                     onClick={handleCopyUsername}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-teal-500/50 text-slate-300 hover:text-white text-xs transition-colors"
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-teal-500/50 text-slate-300 hover:text-white text-[10.5px] transition-colors cursor-pointer shrink-0"
                     title="Sao chép tên đăng nhập"
                   >
                     {copiedUsername ? (
                       <>
-                        <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
+                        <Check className="w-3 h-3 text-emerald-400 stroke-[3]" />
                         <span className="text-emerald-400 font-bold">Đã chép</span>
                       </>
                     ) : (
                       <>
-                        <Copy className="w-3.5 h-3.5 text-teal-400" />
+                        <Copy className="w-3 h-3 text-teal-400" />
                         <span>Sao chép</span>
                       </>
                     )}
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-900 border border-slate-800 font-mono">
-                  <div className="text-xs sm:text-sm font-bold text-teal-300 truncate copyable-text select-text cursor-text" data-copyable="true">
-                    {rawUsername || currentUser?.email || 'Chưa thiết lập'}
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-900 border border-slate-800 font-mono">
+                  <div className="text-xs font-bold text-teal-300 truncate copyable-text select-text cursor-text" data-copyable="true">
+                    {currentUser?.email || rawUsername || 'Chưa thiết lập'}
                   </div>
-                  <div className="text-[11px] text-slate-500 shrink-0 copyable-text select-text cursor-text" data-copyable="true">
-                    ID: {currentUser?.uid ? currentUser.uid.substring(0, 10) + '...' : 'Guest'}
+                  <div className="text-[10px] text-slate-500 shrink-0 copyable-text select-text cursor-text" data-copyable="true">
+                    ID: {currentUser?.uid ? currentUser.uid.substring(0, 8) + '...' : 'Google'}
                   </div>
                 </div>
               </div>
 
               {/* ============================================================ */}
-              {/* THANH 2: MẬT KHẨU */}
-              {/* ============================================================ */}
-              <div className="bg-slate-950/70 border border-slate-800/90 rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-md">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                    <KeyRound className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs sm:text-sm font-bold text-white">
-                      2. Mật Khẩu & Bảo Mật
-                    </h4>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Điều chỉnh mật khẩu tài khoản của bạn (tối thiểu 6 ký tự)
-                    </p>
-                  </div>
-                </div>
-
-                {passwordError && (
-                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 animate-in fade-in">
-                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                    <span>{passwordError}</span>
-                  </div>
-                )}
-
-                {passwordSuccess && (
-                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>{passwordSuccess}</span>
-                  </div>
-                )}
-
-                <form onSubmit={handleChangePasswordSubmit} className="space-y-3 pt-1">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {/* Mật khẩu hiện tại */}
-                    <div>
-                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
-                        Mật khẩu hiện tại
-                      </label>
-                      <div className="relative">
-                        <input
-                          type={showCurrentPassword ? 'text' : 'password'}
-                          value={currentPassword}
-                          onChange={(e) => setCurrentPassword(e.target.value)}
-                          placeholder="Nhập mật khẩu cũ"
-                          className="w-full pl-3.5 pr-9 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
-                        >
-                          {showCurrentPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Mật khẩu mới */}
-                    <div>
-                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
-                        Mật khẩu mới
-                      </label>
-                      <div className="relative">
-                        <input
-                          type={showNewPassword ? 'text' : 'password'}
-                          value={newPassword}
-                          onChange={(e) => setNewPassword(e.target.value)}
-                          placeholder="Mật khẩu mới (≥ 6 ký tự)"
-                          className="w-full pl-3.5 pr-9 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowNewPassword(!showNewPassword)}
-                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
-                        >
-                          {showNewPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Xác nhận mật khẩu mới */}
-                    <div>
-                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
-                        Xác nhận mật khẩu mới
-                      </label>
-                      <div className="relative">
-                        <input
-                          type={showConfirmNewPassword ? 'text' : 'password'}
-                          value={confirmNewPassword}
-                          onChange={(e) => setConfirmNewPassword(e.target.value)}
-                          placeholder="Nhập lại mật khẩu mới"
-                          className="w-full pl-3.5 pr-9 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
-                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
-                        >
-                          {showConfirmNewPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end pt-1">
-                    <button
-                      type="submit"
-                      disabled={isUpdatingPassword || !currentPassword || !newPassword}
-                      className="px-4 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 hover:text-white text-xs font-bold transition-all flex items-center gap-1.5 disabled:opacity-40"
-                    >
-                      {isUpdatingPassword ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <KeyRound className="w-3.5 h-3.5" />}
-                      <span>Lưu Mật Khẩu Mới</span>
-                    </button>
-                  </div>
-                </form>
-              </div>
-
-              {/* ============================================================ */}
-              {/* THANH 3: TÊN HIỂN THỊ & ĐỒNG BỘ THIẾT BỊ */}
-              {/* ============================================================ */}
-              <div className="bg-slate-950/70 border border-slate-800/90 rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-md">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                    <UserCheck className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2 flex-wrap">
-                      <span>3. Tên Hiển Thị & Định Danh Thiết Bị</span>
-                      <span className="text-[10px] font-mono font-bold px-2 py-0.2 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                        <RefreshCw className="w-3 h-3 text-emerald-400" />
-                        Đồng bộ mạng
-                      </span>
-                    </h4>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Đồng bộ trực tiếp với tên thiết bị hiển thị với mọi người trong phòng trò chuyện và mạng nội bộ
-                    </p>
-                  </div>
-                </div>
-
-                {displayNameError && (
-                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 animate-in fade-in">
-                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                    <span>{displayNameError}</span>
-                  </div>
-                )}
-
-                {displayNameSuccess && (
-                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>{displayNameSuccess}</span>
-                  </div>
-                )}
-
-                <form onSubmit={handleUpdateDisplayNameSubmit} className="flex flex-col sm:flex-row items-center gap-3 pt-1">
-                  <div className="relative flex-1 w-full">
-                    <input
-                      type="text"
-                      maxLength={30}
-                      value={editDisplayName}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setEditDisplayName(val);
-                        setDeviceName(val);
-                      }}
-                      placeholder="Nhập tên hiển thị / tên thiết bị mới của bạn"
-                      className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-medium"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isUpdatingDisplayName || !editDisplayName.trim()}
-                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-md shadow-emerald-600/30 flex items-center justify-center gap-1.5 disabled:opacity-40 shrink-0 min-h-[40px]"
-                  >
-                    {isUpdatingDisplayName ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                    <span>Lưu & Đồng Bộ Tên</span>
-                  </button>
-                </form>
-              </div>
-
-              {/* ============================================================ */}
-              {/* THANH 4: LIÊN KẾT / XÁC THỰC TÀI KHOẢN */}
+              {/* THANH 2 (DÀNH CHO GOOGLE USER): TÊN HIỂN THỊ & ĐỊNH DANH THIẾT BỊ */}
               {/* ============================================================ */}
               {isGoogleUser ? (
-                /* TRƯỜNG HỢP A: ĐÃ ĐĂNG NHẬP BẰNG TÀI KHOẢN GOOGLE -> KHÔNG CẦN LIÊN KẾT NỮA */
-                <div className="bg-slate-950/70 border border-slate-800/90 rounded-2xl p-4 sm:p-5 space-y-4 shadow-md relative overflow-hidden">
-                  <div className="flex items-center justify-between">
+                <>
+                  <div className="bg-slate-950/70 border border-slate-800/90 rounded-xl p-3 sm:p-3.5 space-y-2.5 shadow-sm">
                     <div className="flex items-center gap-2">
-                      <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                        <ShieldCheck className="w-4 h-4" />
+                      <div className="p-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                        <UserCheck className="w-3.5 h-3.5" />
                       </div>
                       <div>
-                        <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2 flex-wrap">
-                          <span className="flex items-center gap-1.5">
-                            <Link2 className="w-3.5 h-3.5 text-emerald-400 -rotate-45" />
-                            <span>4. Tài Khoản Google Đã Xác Thực</span>
-                            <Link2 className="w-3.5 h-3.5 text-emerald-400 rotate-45" />
-                          </span>
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 font-bold">
-                            <Check className="w-3 h-3 text-emerald-400 stroke-[3]" />
-                            Tài khoản Google chính chủ
+                        <h4 className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
+                          <span>2. Tên Hiển Thị & Định Danh Thiết Bị</span>
+                          <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-0.5">
+                            <Check className="w-2.5 h-2.5 text-emerald-400" />
+                            Cho phép sửa
                           </span>
                         </h4>
-                        <p className="text-[11px] text-slate-400 mt-0.5">
-                          Bạn đang đăng nhập trực tiếp bằng Tài khoản Google.
+                        <p className="text-[10px] text-slate-400 mt-0.2">
+                          Tên hiển thị với mọi người trong phòng trò chuyện và danh sách thiết bị.
                         </p>
                       </div>
                     </div>
+
+                    {displayNameError && (
+                      <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-1.5 animate-in fade-in">
+                        <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                        <span>{displayNameError}</span>
+                      </div>
+                    )}
+
+                    {displayNameSuccess && (
+                      <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-1.5 animate-in fade-in">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span>{displayNameSuccess}</span>
+                      </div>
+                    )}
+
+                    <form onSubmit={handleUpdateDisplayNameSubmit} className="flex flex-col sm:flex-row items-center gap-2 pt-0.5">
+                      <div className="relative flex-1 w-full">
+                        <input
+                          type="text"
+                          maxLength={30}
+                          value={editDisplayName}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setEditDisplayName(val);
+                            setDeviceName(val);
+                          }}
+                          placeholder="Nhập tên hiển thị / tên thiết bị của bạn"
+                          className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-medium"
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={isUpdatingDisplayName || !editDisplayName.trim()}
+                        className="w-full sm:w-auto px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1 disabled:opacity-40 shrink-0 cursor-pointer"
+                      >
+                        {isUpdatingDisplayName ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3 stroke-[3]" />}
+                        <span>Lưu Tên</span>
+                      </button>
+                    </form>
                   </div>
 
-                  <div className="p-4 rounded-xl bg-slate-900 border border-emerald-500/30 space-y-3 relative overflow-hidden">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
-                          <Link2 className="w-4 h-4 -rotate-45" />
+                  {/* THÔNG TIN XÁC THỰC GOOGLE CHÍNH CHỦ */}
+                  <div className="bg-slate-950/70 border border-emerald-500/30 rounded-xl p-3 sm:p-3.5 space-y-2.5 shadow-sm relative overflow-hidden">
+                    <div className="flex items-start gap-2">
+                      <div className="p-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0 mt-0.5">
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h4 className="text-xs font-bold text-white">
+                            3. Trạng Thái Xác Thực Google
+                          </h4>
+                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 inline-flex items-center gap-0.5 font-bold shrink-0">
+                            <Check className="w-2.5 h-2.5 text-emerald-400 stroke-[3]" />
+                            Bảo mật Google
+                          </span>
                         </div>
+                        <p className="text-[10px] text-slate-400 mt-0.2 leading-snug">
+                          Tài khoản được bảo vệ trực tiếp bởi Google OAuth.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-slate-900 border border-emerald-500/20 space-y-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {currentUser?.photoURL ? (
+                            <img 
+                              src={currentUser.photoURL} 
+                              alt="Avatar Google" 
+                              className="w-7 h-7 rounded-full border border-emerald-500/30 object-cover shrink-0 shadow-sm" 
+                            />
+                          ) : (
+                            <div className="p-1.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                              <User className="w-3.5 h-3.5" />
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[10px] text-slate-400">Tài khoản Google đã đăng nhập:</div>
+                            <div className="text-xs font-bold text-white font-mono mt-0.2 flex items-center gap-1.5 flex-wrap">
+                              <span className="truncate max-w-[190px] sm:max-w-xs">{currentUser?.email}</span>
+                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
+                                <Check className="w-2.5 h-2.5 text-emerald-400" />
+                                Đã bảo mật
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-left sm:text-right shrink-0">
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            Trạng thái: <strong className="text-emerald-400">Hoạt động</strong>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* DÀNH CHO TÀI KHOẢN EMAIL/PASSWORD THƯỜNG */
+                <>
+                  {/* THANH 2: MẬT KHẨU */}
+                  <div className="bg-slate-950/70 border border-slate-800/90 rounded-xl p-3 sm:p-3.5 space-y-2.5 shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                        <KeyRound className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-white">
+                          2. Mật Khẩu & Bảo Mật
+                        </h4>
+                        <p className="text-[10px] text-slate-400 mt-0.2">
+                          Điều chỉnh mật khẩu tài khoản (tối thiểu 6 ký tự)
+                        </p>
+                      </div>
+                    </div>
+
+                    {passwordError && (
+                      <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-1.5 animate-in fade-in">
+                        <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                        <span>{passwordError}</span>
+                      </div>
+                    )}
+
+                    {passwordSuccess && (
+                      <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-1.5 animate-in fade-in">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span>{passwordSuccess}</span>
+                      </div>
+                    )}
+
+                    <form onSubmit={handleChangePasswordSubmit} className="space-y-2 pt-0.5">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <div>
-                          <div className="text-[11px] text-slate-400">Địa chỉ đăng nhập Google:</div>
-                          <div className="text-sm font-bold text-white font-mono mt-0.5 flex items-center gap-2">
-                            <span>{currentUser?.email}</span>
-                            <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
-                              <Link2 className="w-3 h-3 text-emerald-400 -rotate-45" />
-                              <span>Đã bảo mật</span>
-                              <Link2 className="w-3 h-3 text-emerald-400 rotate-45" />
-                            </span>
+                          <label className="block text-[10.5px] font-medium text-slate-300 mb-0.5">
+                            Mật khẩu cũ
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showCurrentPassword ? 'text' : 'password'}
+                              value={currentPassword}
+                              onChange={(e) => setCurrentPassword(e.target.value)}
+                              placeholder="Nhập mật khẩu cũ"
+                              className="w-full pl-2.5 pr-8 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                            >
+                              {showCurrentPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10.5px] font-medium text-slate-300 mb-0.5">
+                            Mật khẩu mới
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showNewPassword ? 'text' : 'password'}
+                              value={newPassword}
+                              onChange={(e) => setNewPassword(e.target.value)}
+                              placeholder="≥ 6 ký tự"
+                              className="w-full pl-2.5 pr-8 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowNewPassword(!showNewPassword)}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                            >
+                              {showNewPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10.5px] font-medium text-slate-300 mb-0.5">
+                            Xác nhận mật khẩu
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showConfirmNewPassword ? 'text' : 'password'}
+                              value={confirmNewPassword}
+                              onChange={(e) => setConfirmNewPassword(e.target.value)}
+                              placeholder="Nhập lại"
+                              className="w-full pl-2.5 pr-8 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                            >
+                              {showConfirmNewPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                            </button>
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 text-left sm:text-right">
-                        <span className="text-[11px] text-slate-400 font-mono">
-                          Ngày xác thực: {userProfile?.emailVerifiedAt ? new Date(userProfile.emailVerifiedAt).toLocaleDateString('vi-VN') : 'Đang hoạt động'}
-                        </span>
-                        <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0 hidden sm:flex">
-                          <Link2 className="w-4 h-4 rotate-45" />
-                        </div>
+
+                      <div className="flex justify-end pt-0.5">
+                        <button
+                          type="submit"
+                          disabled={isUpdatingPassword || !currentPassword || !newPassword}
+                          className="px-3 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 hover:text-white text-xs font-bold transition-all flex items-center gap-1 disabled:opacity-40"
+                        >
+                          {isUpdatingPassword ? <RefreshCw className="w-3 h-3 animate-spin" /> : <KeyRound className="w-3 h-3" />}
+                          <span>Lưu Mật Khẩu</span>
+                        </button>
                       </div>
-                    </div>
-                    <div className="pt-2 border-t border-slate-800/80 text-xs text-slate-400 flex items-center gap-1.5">
-                      <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Tài khoản Google đã được bảo vệ toàn diện bởi Google Identity. Không cần thực hiện thêm liên kết nào khác.</span>
-                    </div>
+                    </form>
                   </div>
-                </div>
-              ) : (
-                /* TRƯỜNG HỢP B: TÀI KHOẢN ĐĂNG KÝ (THƯỜNG / KHÁCH) -> XÁC MINH EMAIL QUA OTP 6 SỐ */
-                <div className="bg-slate-950/70 border border-slate-800/90 rounded-2xl p-4 sm:p-5 space-y-4 shadow-md">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+
+                  {/* THANH 3: TÊN HIỂN THỊ */}
+                  <div className="bg-slate-950/70 border border-slate-800/90 rounded-xl p-3 sm:p-3.5 space-y-2.5 shadow-sm">
                     <div className="flex items-center gap-2">
-                      <div className="p-2 rounded-xl bg-blue-500/15 text-blue-400 border border-blue-500/30">
-                        <Mail className="w-4 h-4" />
+                      <div className="p-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                        <UserCheck className="w-3.5 h-3.5" />
                       </div>
                       <div>
-                        <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2 flex-wrap">
-                          <span className="flex items-center gap-1.5">
-                            <Link2 className="w-3.5 h-3.5 text-blue-400 -rotate-45" />
-                            <span>4. Xác Minh & Liên Kết Email (Mã OTP 6 Số)</span>
-                            <Link2 className="w-3.5 h-3.5 text-blue-400 rotate-45" />
+                        <h4 className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
+                          <span>3. Tên Hiển Thị & Đồng Bộ Thiết Bị</span>
+                          <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-0.5">
+                            <RefreshCw className="w-2.5 h-2.5 text-emerald-400" />
+                            Đồng bộ
                           </span>
+                        </h4>
+                        <p className="text-[10px] text-slate-400 mt-0.2">
+                          Đồng bộ trực tiếp với tên thiết bị hiển thị với mọi người trong phòng trò chuyện.
+                        </p>
+                      </div>
+                    </div>
+
+                    {displayNameError && (
+                      <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-1.5 animate-in fade-in">
+                        <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                        <span>{displayNameError}</span>
+                      </div>
+                    )}
+
+                    {displayNameSuccess && (
+                      <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-1.5 animate-in fade-in">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span>{displayNameSuccess}</span>
+                      </div>
+                    )}
+
+                    <form onSubmit={handleUpdateDisplayNameSubmit} className="flex flex-col sm:flex-row items-center gap-2 pt-0.5">
+                      <div className="relative flex-1 w-full">
+                        <input
+                          type="text"
+                          maxLength={30}
+                          value={editDisplayName}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setEditDisplayName(val);
+                            setDeviceName(val);
+                          }}
+                          placeholder="Nhập tên hiển thị / tên thiết bị mới của bạn"
+                          className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-medium"
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={isUpdatingDisplayName || !editDisplayName.trim()}
+                        className="w-full sm:w-auto px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1 disabled:opacity-40 shrink-0"
+                      >
+                        {isUpdatingDisplayName ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3 stroke-[3]" />}
+                        <span>Lưu Tên</span>
+                      </button>
+                    </form>
+                  </div>
+                </>
+              )}
+
+              {/* ============================================================ */}
+              {/* THANH 4 (CHỈ HIỂN THỊ KHI KHÔNG PHẢI GOOGLE): XÁC MINH EMAIL */}
+              {/* ============================================================ */}
+              {!isGoogleUser && (
+                <div className="bg-slate-950/70 border border-slate-800/90 rounded-xl p-3 sm:p-3.5 space-y-3 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                        <Mail className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
+                          <span>4. Xác Minh & Liên Kết Email</span>
                           {isEmailFullyVerified ? (
-                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 font-bold">
-                              <Link2 className="w-3 h-3 text-emerald-400 -rotate-45" />
-                              <span>Đã xác thực OTP 6 số</span>
-                              <Link2 className="w-3 h-3 text-emerald-400 rotate-45" />
+                            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-0.5 font-bold">
+                              <span>Đã xác thực</span>
                             </span>
                           ) : isLinkedEmail ? (
-                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 font-bold flex items-center gap-1">
-                              <Link2 className="w-3 h-3 text-blue-400 -rotate-45" />
+                            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 font-bold">
                               <span>Đã liên kết</span>
-                              <Link2 className="w-3 h-3 text-blue-400 rotate-45" />
                             </span>
                           ) : (
-                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
                               Chưa xác minh
                             </span>
                           )}
                         </h4>
-                        <p className="text-[11px] text-slate-400 mt-0.5">
-                          Xác minh Email với mã bảo mật 6 chữ số có hiệu lực trong 15 phút
+                        <p className="text-[10px] text-slate-400 mt-0.2">
+                          Xác minh Email với mã bảo mật 6 số có hiệu lực 15 phút
                         </p>
                       </div>
                     </div>
@@ -1642,30 +1695,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           setIsOtpSent(false);
                           setEmailDispatchData(null);
                         }}
-                        className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-blue-500/40 text-blue-400 hover:text-blue-300 text-xs font-semibold transition-colors flex items-center gap-1.5 self-start sm:self-auto"
+                        className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:border-blue-500/40 text-blue-400 hover:text-blue-300 text-[11px] font-semibold transition-colors flex items-center gap-1 self-start sm:self-auto"
                       >
                         <RefreshCw className="w-3 h-3" />
-                        <span>Đổi / Liên kết email khác</span>
+                        <span>Đổi email</span>
                       </button>
                     )}
                   </div>
 
                   {/* Thông báo lỗi nếu có */}
                   {linkEmailError && (
-                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2.5 animate-in fade-in">
-                      <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                      <div className="flex-1 leading-relaxed">
+                    <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-1.5 animate-in fade-in">
+                      <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
+                      <div className="flex-1 leading-snug">
                         <span>{linkEmailError}</span>
                         {isOtpExpired && (
-                          <div className="mt-2">
+                          <div className="mt-1">
                             <button
                               type="button"
                               onClick={handleSendOtp}
                               disabled={isSendingOtp}
-                              className="px-3 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 text-xs font-bold transition-all flex items-center gap-1.5"
+                              className="px-2.5 py-0.5 rounded bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 text-[11px] font-bold transition-all flex items-center gap-1"
                             >
                               <RefreshCw className={`w-3 h-3 ${isSendingOtp ? 'animate-spin' : ''}`} />
-                              <span>Gửi lại mã mới ngay</span>
+                              <span>Gửi lại mã</span>
                             </button>
                           </div>
                         )}
@@ -1675,60 +1728,52 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                   {/* Thông báo thành công nếu có */}
                   {linkEmailSuccess && (
-                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-1.5 animate-in fade-in">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                       <span>{linkEmailSuccess}</span>
                     </div>
                   )}
 
-                  {/* TRẠNG THÁI 1: ĐÃ LIÊN KẾT & XÁC THỰC THÀNH CÔNG (VÀ KHÔNG Ở CHẾ ĐỘ SỬA) */}
+                  {/* TRẠNG THÁI 1: ĐÃ LIÊN KẾT & XÁC THỰC THÀNH CÔNG */}
                   {isEmailFullyVerified && !isEditingLinkedEmail ? (
-                    <div className="p-4 rounded-xl bg-slate-900 border border-emerald-500/30 space-y-3 relative overflow-hidden">
+                    <div className="p-2.5 rounded-lg bg-slate-900 border border-emerald-500/30 space-y-2">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
-                            <Link2 className="w-4 h-4 -rotate-45" />
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                            <Link2 className="w-3.5 h-3.5 -rotate-45" />
                           </div>
-                          <div>
-                            <div className="text-[11px] text-slate-400">Địa chỉ Email đã xác thực an toàn:</div>
-                            <div className="text-sm font-bold text-white font-mono mt-0.5 flex items-center gap-2">
-                              <span>{currentUser?.email || userProfile?.linkedEmail}</span>
-                              <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
-                                <Link2 className="w-3 h-3 text-emerald-400 -rotate-45" />
-                                <span>Đã bảo mật</span>
-                                <Link2 className="w-3 h-3 text-emerald-400 rotate-45" />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[10px] text-slate-400">Email đã xác thực an toàn:</div>
+                            <div className="text-xs font-bold text-white font-mono mt-0.2 flex items-center gap-1.5 flex-wrap">
+                              <span className="truncate max-w-[190px] sm:max-w-xs">{currentUser?.email || userProfile?.linkedEmail}</span>
+                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
+                                <Check className="w-2.5 h-2.5 text-emerald-400" />
+                                Đã bảo mật
                               </span>
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 text-left sm:text-right">
-                          <span className="text-[11px] text-slate-400 font-mono">
-                            Xác thực: {userProfile?.emailVerifiedAt ? new Date(userProfile.emailVerifiedAt).toLocaleDateString('vi-VN') : 'Đang hoạt động'}
+                        <div className="text-left sm:text-right shrink-0">
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            Xác thực: {userProfile?.emailVerifiedAt ? new Date(userProfile.emailVerifiedAt).toLocaleDateString('vi-VN') : 'Hoạt động'}
                           </span>
-                          <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0 hidden sm:flex">
-                            <Link2 className="w-4 h-4 rotate-45" />
-                          </div>
                         </div>
-                      </div>
-                      <div className="pt-2 border-t border-slate-800/80 text-xs text-slate-400 flex items-center gap-1.5">
-                        <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <span>Tài khoản được bảo vệ bởi hệ thống xác thực OTP 6 số. Mọi quyền truy cập nhạy cảm đều được bảo vệ.</span>
                       </div>
                     </div>
                   ) : (
                     /* TRẠNG THÁI 2: ĐANG NHẬP EMAIL & XÁC THỰC MÃ 6 SỐ */
-                    <div className="space-y-4 pt-1">
-                      {/* BƯỚC 1: NHẬP ĐỊA CHỈ EMAIL VÀ BẤM GỬI MÃ */}
-                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                    <div className="space-y-2.5 pt-0.5">
+                      {/* BƯỚC 1: NHẬP ĐỊA CHỈ EMAIL */}
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                         <div className="relative flex-1">
-                          <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                          <Mail className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                           <input
                             type="email"
                             value={linkEmailInput}
                             onChange={(e) => setLinkEmailInput(e.target.value)}
-                            placeholder="Nhập địa chỉ email của bạn (ví dụ: yourname@gmail.com)"
+                            placeholder="Nhập email của bạn"
                             disabled={isOtpSent && !isOtpExpired}
-                            className="w-full pl-10 pr-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono disabled:opacity-60"
+                            className="w-full pl-8 pr-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono disabled:opacity-60"
                           />
                         </div>
 
@@ -1736,22 +1781,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           type="button"
                           onClick={handleSendOtp}
                           disabled={isSendingOtp || !linkEmailInput.trim()}
-                          className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-md shadow-blue-600/30 flex items-center justify-center gap-1.5 disabled:opacity-40 shrink-0 min-h-[40px]"
+                          className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1 disabled:opacity-40 shrink-0"
                         >
                           {isSendingOtp ? (
                             <>
-                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                              <span>Đang gửi mã...</span>
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                              <span>Đang gửi...</span>
                             </>
                           ) : isOtpSent ? (
                             <>
-                              <RefreshCw className="w-3.5 h-3.5" />
-                              <span>{isOtpExpired ? 'Gửi lại mã mới' : 'Gửi lại mã'}</span>
+                              <RefreshCw className="w-3 h-3" />
+                              <span>{isOtpExpired ? 'Gửi lại' : 'Gửi lại'}</span>
                             </>
                           ) : (
                             <>
-                              <Send className="w-3.5 h-3.5" />
-                              <span>Gửi mã xác nhận 6 số</span>
+                              <Send className="w-3 h-3" />
+                              <span>Gửi mã 6 số</span>
                             </>
                           )}
                         </button>
@@ -1764,112 +1809,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               setIsOtpSent(false);
                               setEmailDispatchData(null);
                             }}
-                            className="px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white text-xs transition-colors shrink-0"
+                            className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white text-xs transition-colors shrink-0"
                           >
                             Hủy
                           </button>
                         )}
                       </div>
 
-                      {/* BƯỚC 2: KHI ĐÃ GỬI MÃ -> HIỂN THỊ ĐỒNG HỒ 15 PHÚT + HƯỚNG DẪN + Ô NHẬP 6 SỐ */}
+                      {/* BƯỚC 2: Ô NHẬP 6 SỐ */}
                       {isOtpSent && (
-                        <div className="space-y-4 pt-1 animate-in fade-in slide-in-from-top-2 duration-300">
-                          {/* 1. KHUNG ĐỒNG HỒ ĐẾM NGƯỢC 15 PHÚT */}
-                          <div className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                            isOtpExpired 
-                              ? 'bg-rose-950/40 border-rose-500/50 text-rose-300' 
-                              : 'bg-gradient-to-r from-blue-950/40 via-slate-900 to-slate-900 border-blue-500/40 text-blue-200'
-                          }`}>
-                            <div className="flex items-center gap-2.5">
-                              <Clock className={`w-5 h-5 shrink-0 ${isOtpExpired ? 'text-rose-400' : 'text-blue-400'}`} />
-                              <div>
-                                <div className="text-xs font-bold text-white flex items-center gap-2">
-                                  <span>{isOtpExpired ? 'Mã xác nhận đã hết hạn!' : 'Mã xác nhận đang có hiệu lực:'}</span>
-                                  <span className={`text-xs font-mono font-black px-2.5 py-0.5 rounded-lg border ${
-                                    isOtpExpired 
-                                      ? 'bg-rose-500/20 text-rose-400 border-rose-500/30 animate-pulse' 
-                                      : 'bg-blue-500/20 text-blue-300 border-blue-500/30'
-                                  }`}>
-                                    {isOtpExpired ? '00:00 (Hết hạn)' : formatOtpCountdown(otpTimeLeftSeconds)}
-                                  </span>
-                                </div>
-                                <div className="text-[11px] text-slate-400 mt-0.5">
-                                  {isOtpExpired 
-                                    ? 'Mã 6 số chỉ sống trong 15 phút. Bạn cần nhấn "Gửi lại mã mới" để tiếp tục.' 
-                                    : 'Mỗi mã chỉ có thể sống trong 15 phút. Vui lòng nhập mã trước khi hết thời gian.'}
-                                </div>
-                              </div>
-                            </div>
-
-                            {isOtpExpired && (
-                              <button
-                                type="button"
-                                onClick={handleSendOtp}
-                                disabled={isSendingOtp}
-                                className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-md shadow-rose-600/30 flex items-center justify-center gap-1.5 shrink-0"
-                              >
-                                <RefreshCw className={`w-3.5 h-3.5 ${isSendingOtp ? 'animate-spin' : ''}`} />
-                                <span>Gửi lại mã mới</span>
-                              </button>
-                            )}
-                          </div>
-
-                          {/* 2. THÔNG BÁO ĐÃ GỬI MÃ ĐẾN HÒM THƯ */}
-                          <div className="p-4 rounded-xl bg-slate-900 border border-blue-500/30 space-y-3 relative overflow-hidden">
-                            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                              <div className="flex items-center gap-2">
-                                <Link2 className="w-3.5 h-3.5 text-blue-400 -rotate-45 shrink-0" />
-                                <Inbox className="w-4 h-4 text-emerald-400 animate-pulse" />
-                                <span className="text-xs font-bold text-white">
-                                  Đã gửi mã đến: <span className="text-emerald-400 font-mono">[{emailDispatchData?.recipientEmail || linkEmailInput}]</span>
-                                </span>
-                              </div>
-                              <Link2 className="w-3.5 h-3.5 text-blue-400 rotate-45 shrink-0" />
-                            </div>
-
-                            {/* Hướng dẫn kiểm tra hộp thư theo đúng chuẩn yêu cầu */}
-                            <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2.5">
-                              <div className="flex items-start gap-2.5 text-xs text-slate-300 leading-relaxed">
-                                <Mail className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                                <div className="space-y-2 w-full">
-                                  {/* DÒNG 1 */}
-                                  <div className="text-xs text-slate-200">
-                                    <strong className="text-white">Kiểm tra Gmail (Hộp thư đến):</strong> Tìm thư từ <strong className="text-emerald-400 font-semibold">CloudSend Security</strong> với tiêu đề <strong className="text-slate-100">[CloudSend] Mã xác nhận</strong>.
-                                  </div>
-
-                                  {/* DÒNG 2 KÈM NÚT MỞ GMAIL */}
-                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-slate-900">
-                                    <div className="text-[11px] text-slate-400">
-                                      Kiểm tra cả thư mục <strong className="text-amber-300 font-medium">Spam (Thư rác)</strong> hoặc mục <strong className="text-amber-300 font-medium">Quảng cáo (Promotions)</strong>.
-                                    </div>
-                                    <a
-                                      href="https://mail.google.com"
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="text-xs text-blue-400 hover:text-blue-300 font-bold flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/15 border border-blue-500/30 hover:bg-blue-500/25 transition-all shadow-sm shrink-0 w-fit"
-                                    >
-                                      <ExternalLink className="w-3.5 h-3.5" />
-                                      <span>Mở Gmail</span>
-                                    </a>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* 3. Ô NHẬP MÃ 6 CHỮ SỐ VÀ NÚT XÁC THỰC HOÀN TẤT (TỰ ĐỘNG XÁC THỰC KHI ĐỦ 6 SỐ HOẶC PASTE) */}
-                          <form onSubmit={handleVerifyOtpSubmit} className="p-4 rounded-xl bg-slate-900 border border-blue-500/30 space-y-3">
+                        <div className="space-y-2 pt-0.5 animate-in fade-in duration-200">
+                          <form onSubmit={handleVerifyOtpSubmit} className="p-2.5 rounded-lg bg-slate-900 border border-blue-500/30 space-y-2">
                             <label className="block text-xs font-bold text-white flex items-center justify-between">
-                              <span className="flex items-center gap-1.5">
-                                <KeyRound className="w-3.5 h-3.5 text-blue-400" />
-                                Nhập mã 6 chữ số từ Gmail để hoàn tất:
+                              <span className="flex items-center gap-1">
+                                <KeyRound className="w-3 h-3 text-blue-400" />
+                                Nhập mã 6 chữ số từ Gmail:
                               </span>
-                              <span className="text-[10px] text-slate-400 font-mono">
-                                {otpCodeInput.length}/6 ký tự
+                              <span className="text-[10px] font-mono text-emerald-400">
+                                {formatOtpCountdown(otpTimeLeftSeconds)}
                               </span>
                             </label>
 
-                            <div className="flex flex-col sm:flex-row items-center gap-2.5">
+                            <div className="flex flex-col sm:flex-row items-center gap-2">
                               <div className="relative flex-1 w-full">
                                 <input
                                   type="text"
@@ -1879,30 +1840,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                   value={otpCodeInput}
                                   onChange={(e) => handleOtpInputChange(e.target.value)}
                                   onPaste={handleOtpPaste}
-                                  placeholder="Nhập hoặc dán 6 số (VD: 839201)"
+                                  placeholder="6 số (VD: 839201)"
                                   disabled={isOtpExpired || isVerifyingOtp}
-                                  className={`w-full px-4 py-2.5 bg-slate-950 border border-slate-700/90 rounded-xl text-center text-white placeholder-slate-500 placeholder:text-xs sm:placeholder:text-sm placeholder:font-normal placeholder:tracking-normal focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:opacity-50 transition-all ${
-                                    otpCodeInput.length > 0 
-                                      ? 'font-mono font-black text-base sm:text-lg tracking-[0.3em] text-emerald-300' 
-                                      : 'text-xs sm:text-sm tracking-normal'
-                                  }`}
+                                  className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700/90 rounded-lg text-center text-white placeholder-slate-500 text-xs font-mono font-bold tracking-widest focus:outline-none focus:border-blue-500"
                                 />
                               </div>
 
                               <button
                                 type="submit"
                                 disabled={isVerifyingOtp || otpCodeInput.trim().length !== 6 || isOtpExpired}
-                                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:from-blue-500 hover:via-indigo-500 hover:to-blue-500 text-white text-xs font-bold transition-all shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 disabled:opacity-40 shrink-0 min-h-[44px]"
+                                className="w-full sm:w-auto px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1 disabled:opacity-40 shrink-0"
                               >
                                 {isVerifyingOtp ? (
                                   <>
-                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                    <span>Đang xác thực mã...</span>
+                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                    <span>Đang xác thực...</span>
                                   </>
                                 ) : (
                                   <>
-                                    <ShieldCheck className="w-4 h-4 text-emerald-300" />
-                                    <span>Xác Thực Mã & Liên Kết</span>
+                                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-300" />
+                                    <span>Xác Thực & Lưu</span>
                                   </>
                                 )}
                               </button>
@@ -1918,21 +1875,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* ============================================================ */}
               {/* THANH 5: CÁC THIẾT BỊ ĐÃ ĐĂNG NHẬP */}
               {/* ============================================================ */}
-              <div className="bg-slate-950/70 border border-slate-800/90 rounded-2xl p-4 sm:p-5 space-y-4 shadow-md">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="p-2 rounded-xl bg-purple-500/15 text-purple-400 border border-purple-500/30">
-                      <MonitorSmartphone className="w-4 h-4" />
+              <div className="bg-slate-950/70 border border-slate-800/90 rounded-xl p-3 sm:p-3.5 space-y-2.5 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="p-1.5 rounded-lg bg-purple-500/15 text-purple-400 border border-purple-500/30 shrink-0">
+                      <MonitorSmartphone className="w-3.5 h-3.5" />
                     </div>
-                    <div>
-                      <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
-                        <span>5. Các Thiết Bị Đã Đăng Nhập</span>
-                        <span className="text-[10px] font-mono px-2 py-0.2 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                          {sessions.length} phiên hoạt động
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h4 className="text-xs font-bold text-white">
+                          {isGoogleUser ? '3. Thiết Bị Đã Đăng Nhập' : '5. Thiết Bị Đã Đăng Nhập'}
+                        </h4>
+                        <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 shrink-0 font-bold">
+                          {sessions.length} phiên
                         </span>
-                      </h4>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        Theo dõi thiết bị, địa điểm và thời gian đăng nhập tài khoản của bạn
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-0.2 truncate">
+                        Theo dõi thiết bị và thời gian đăng nhập
                       </p>
                     </div>
                   </div>
@@ -1941,54 +1900,54 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     type="button"
                     onClick={fetchSessions}
                     disabled={isLoadingSessions}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-purple-500/40 text-slate-300 hover:text-white text-xs transition-colors"
-                    title="Làm mới danh sách thiết bị"
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-purple-500/40 text-slate-300 hover:text-white text-[10.5px] transition-colors shrink-0"
+                    title="Làm mới"
                   >
-                    <RefreshCw className={`w-3.5 h-3.5 text-purple-400 ${isLoadingSessions ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`w-3 h-3 text-purple-400 ${isLoadingSessions ? 'animate-spin' : ''}`} />
                     <span>Làm mới</span>
                   </button>
                 </div>
 
                 {/* Danh sách thẻ thiết bị */}
-                <div className="space-y-2.5 pt-1">
+                <div className="space-y-1.5 pt-0.5">
                   {sessions.map((sess) => (
                     <div 
                       key={sess.id}
-                      className={`p-3.5 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                      className={`p-2.5 rounded-lg border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
                         sess.isCurrent 
                           ? 'bg-gradient-to-r from-emerald-950/30 via-slate-900 to-slate-900 border-emerald-500/40 shadow-sm'
                           : 'bg-slate-900/90 border-slate-800 hover:border-slate-700'
                       }`}
                     >
-                      <div className="flex items-start gap-3">
-                        <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 shrink-0 mt-0.5">
-                          {renderDeviceIconByType(sess.deviceType || 'laptop', 'w-5 h-5')}
+                      <div className="flex items-start gap-2">
+                        <div className="p-1.5 rounded-md bg-slate-950 border border-slate-800 shrink-0 mt-0.5">
+                          {renderDeviceIconByType(sess.deviceType || 'laptop', 'w-4 h-4')}
                         </div>
 
                         <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs sm:text-sm font-bold text-white truncate">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs font-bold text-white truncate">
                               {sess.deviceName || 'Thiết bị'}
                             </span>
                             {sess.isCurrent && (
-                              <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                                Thiết bị này (Hiện tại)
+                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                Hiện tại
                               </span>
                             )}
                           </div>
 
-                          <div className="text-[11px] text-slate-400 mt-1 flex flex-wrap items-center gap-y-1 gap-x-3">
-                            <span className="flex items-center gap-1 font-medium text-slate-300">
-                              <Cpu className="w-3 h-3 text-emerald-400" />
+                          <div className="text-[10px] text-slate-400 mt-0.5 flex flex-wrap items-center gap-y-0.5 gap-x-2">
+                            <span className="flex items-center gap-0.5 text-slate-300">
+                              <Cpu className="w-2.5 h-2.5 text-emerald-400" />
                               {sess.browser ? (sess.browser.includes('trên') ? sess.browser.split('trên')[1].trim() : sess.browser) : 'Thiết bị'}
                             </span>
-                            <span className="flex items-center gap-1 text-slate-300">
-                              <MapPin className="w-3 h-3 text-rose-400 shrink-0" />
+                            <span className="flex items-center gap-0.5 text-slate-300">
+                              <MapPin className="w-2.5 h-2.5 text-rose-400 shrink-0" />
                               {sess.location || 'Việt Nam'}
                             </span>
-                            <span className="flex items-center gap-1 text-slate-400 font-mono">
-                              <Clock className="w-3 h-3 text-teal-400 shrink-0" />
-                              Đăng nhập: {formatSessionTime(sess.loginAt)}
+                            <span className="flex items-center gap-0.5 text-slate-400 font-mono">
+                              <Clock className="w-2.5 h-2.5 text-teal-400 shrink-0" />
+                              {formatSessionTime(sess.loginAt)}
                             </span>
                           </div>
                         </div>
@@ -1996,18 +1955,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                       <div className="flex items-center justify-end shrink-0">
                         {sess.isCurrent ? (
-                          <span className="text-[11px] font-medium text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20 flex items-center gap-1.5">
+                          <span className="text-[10px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20 flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                            Đang hoạt động
+                            Online
                           </span>
                         ) : (
                           <button
                             type="button"
                             onClick={() => handleLogoutSession(sess.id)}
-                            className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs font-semibold transition-colors flex items-center gap-1.5"
+                            className="px-2 py-0.5 rounded-md bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-[10.5px] font-semibold transition-colors flex items-center gap-1"
                           >
-                            <Power className="w-3.5 h-3.5" />
-                            <span>Đăng xuất thiết bị này</span>
+                            <Power className="w-3 h-3" />
+                            <span>Đăng xuất</span>
                           </button>
                         )}
                       </div>
@@ -2015,109 +1974,107 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   ))}
 
                   {sessions.length === 0 && !isLoadingSessions && (
-                    <div className="text-center py-4 text-xs text-slate-500 italic">
-                      Chưa có dữ liệu phiên đăng nhập. Nhấn "Làm mới" để tải.
+                    <div className="text-center py-2 text-xs text-slate-500 italic">
+                      Chưa có dữ liệu phiên. Nhấn "Làm mới" để tải.
                     </div>
                   )}
                 </div>
               </div>
 
               {/* ============================================================ */}
-              {/* THANH 6: ĐĂNG XUẤT & ĐĂNG XUẤT TẤT CẢ CÁC THIẾT BỊ */}
+              {/* THANH 6: ĐĂNG XUẤT */}
               {/* ============================================================ */}
-              <div className="bg-slate-950/70 border border-rose-500/30 rounded-2xl p-4 sm:p-5 space-y-4 shadow-lg shadow-rose-950/20">
+              <div className="bg-slate-950/70 border border-rose-500/30 rounded-xl p-3 sm:p-3.5 space-y-2.5 shadow-sm">
                 <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-xl bg-rose-500/15 text-rose-400 border border-rose-500/30">
-                    <LogOut className="w-4 h-4" />
+                  <div className="p-1.5 rounded-lg bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                    <LogOut className="w-3.5 h-3.5" />
                   </div>
                   <div>
-                    <h4 className="text-xs sm:text-sm font-bold text-white">
-                      6. Đăng Xuất & Quản Lý Phiên Từ Xa
+                    <h4 className="text-xs font-bold text-white">
+                      {isGoogleUser ? '4. Đăng Xuất & Quản Lý Phiên' : '6. Đăng Xuất & Quản Lý Phiên'}
                     </h4>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Đăng xuất thiết bị hiện tại hoặc đăng xuất trên toàn bộ các thiết bị đã từng đăng nhập
+                    <p className="text-[10px] text-slate-400 mt-0.2">
+                      Đăng xuất thiết bị hiện tại hoặc tất cả các thiết bị
                     </p>
                   </div>
                 </div>
 
                 {/* Hộp xác nhận đăng xuất tất cả */}
                 {showLogoutAllConfirm && (
-                  <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-500/60 space-y-3 animate-in fade-in">
-                    <div className="flex items-start gap-2.5">
-                      <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
-                      <div className="text-xs text-rose-200 leading-relaxed">
-                        <strong>Xác nhận hành động an toàn:</strong> Toàn bộ các phiên làm việc trên các máy tính, điện thoại, tivi khác và cả thiết bị này sẽ bị đăng xuất ngay lập tức.
+                  <div className="p-2.5 rounded-lg bg-rose-950/40 border border-rose-500/60 space-y-2 animate-in fade-in">
+                    <div className="flex items-start gap-1.5">
+                      <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                      <div className="text-[11px] text-rose-200 leading-snug">
+                        <strong>Xác nhận:</strong> Toàn bộ các phiên làm việc trên các máy tính, điện thoại, tivi khác sẽ bị đăng xuất ngay lập tức.
                       </div>
                     </div>
-                    <div className="flex items-center justify-end gap-2.5 pt-1">
+                    <div className="flex items-center justify-end gap-2 pt-0.5">
                       <button
                         type="button"
                         onClick={() => setShowLogoutAllConfirm(false)}
-                        className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-900 border border-slate-700"
+                        className="px-2.5 py-1 rounded text-[11px] font-medium text-slate-300 hover:text-white bg-slate-900 border border-slate-700"
                       >
-                        Hủy bỏ
+                        Hủy
                       </button>
                       <button
                         type="button"
                         onClick={handleLogoutAllDevicesConfirm}
                         disabled={isLoggingOutAll}
-                        className="px-4 py-1.5 rounded-lg text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 shadow-md transition-all flex items-center gap-1.5"
+                        className="px-3 py-1 rounded text-[11px] font-bold text-white bg-rose-600 hover:bg-rose-500 shadow-sm transition-all flex items-center gap-1"
                       >
-                        {isLoggingOutAll ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Power className="w-3.5 h-3.5" />}
-                        <span>Xác Nhận Đăng Xuất Tất Cả</span>
+                        {isLoggingOutAll ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Power className="w-3 h-3" />}
+                        <span>Đăng Xuất Tất Cả</span>
                       </button>
                     </div>
                   </div>
                 )}
 
-                {/* 2 NÚT ĐẶT CẠNH NHAU THEO YÊU CẦU */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                  {/* Nút 1: ĐĂNG XUẤT THIẾT BỊ HIỆN TẠI */}
+                {/* 2 NÚT ĐẶT CẠNH NHAU */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
                   <button
                     id="btn-single-logout"
                     type="button"
                     onClick={handleDirectLogout}
                     disabled={isLoggingOut}
-                    className="flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-rose-300 hover:text-rose-200 border border-rose-500/30 hover:border-rose-500/60 font-bold text-xs sm:text-sm transition-all shadow-md active:scale-[0.99] min-h-[46px]"
+                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-slate-900 hover:bg-slate-800 text-rose-300 hover:text-rose-200 border border-rose-500/30 hover:border-rose-500/60 font-bold text-xs transition-all shadow-sm active:scale-[0.99]"
                   >
                     {isLoggingOut ? (
-                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                     ) : (
-                      <LogOut className="w-4 h-4 text-rose-400" />
+                      <LogOut className="w-3.5 h-3.5 text-rose-400" />
                     )}
                     <span>Đăng Xuất Thiết Bị Này</span>
                   </button>
 
-                  {/* Nút 2: ĐĂNG XUẤT TẤT CẢ CÁC THIẾT BỊ */}
                   <button
                     id="btn-logout-all-devices"
                     type="button"
                     onClick={() => setShowLogoutAllConfirm(true)}
                     disabled={isLoggingOutAll}
-                    className="flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl bg-gradient-to-r from-rose-700 via-rose-600 to-rose-700 hover:from-rose-600 hover:to-rose-500 text-white font-bold text-xs sm:text-sm transition-all shadow-lg shadow-rose-950/60 border border-rose-400/40 active:scale-[0.99] min-h-[46px]"
+                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-gradient-to-r from-rose-700 via-rose-600 to-rose-700 hover:from-rose-600 hover:to-rose-500 text-white font-bold text-xs transition-all shadow-sm border border-rose-400/40 active:scale-[0.99]"
                   >
-                    <Power className="w-4 h-4 text-white" />
-                    <span>Đăng Xuất Tất Cả Các Thiết Bị</span>
+                    <Power className="w-3.5 h-3.5 text-white" />
+                    <span>Đăng Xuất Tất Cả</span>
                   </button>
                 </div>
               </div>
 
               {/* ============================================================ */}
-              {/* NỘI QUY & ĐIỀU KHOẢN SỬ DỤNG (GIỮ NGUYÊN) */}
+              {/* NỘI QUY & ĐIỀU KHOẢN */}
               {/* ============================================================ */}
               {onOpenRules && (
-                <div className="bg-slate-950/60 border border-slate-800/90 rounded-2xl p-5 space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
-                        <Scale className="w-5 h-5" />
+                <div className="bg-slate-950/60 border border-slate-800/90 rounded-xl p-3 space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-start gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
+                        <Scale className="w-3.5 h-3.5" />
                       </div>
                       <div>
-                        <div className="text-sm font-bold text-white">
-                          Nội Quy & Điều Khoản Cộng Đồng CloudSend
+                        <div className="text-xs font-bold text-white">
+                          Nội Quy & Điều Khoản CloudSend
                         </div>
-                        <div className="text-xs text-slate-400 mt-1">
-                          Danh sách quy định về an toàn mạng, cấm phát tán nội dung 18+, virus độc hại và khung chế tài xử lý vi phạm.
+                        <div className="text-[10.5px] text-slate-400 leading-snug">
+                          Quy định an toàn mạng, cấm phát tán nội dung xấu độc và chế tài xử lý.
                         </div>
                       </div>
                     </div>
@@ -2128,33 +2085,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         onClose();
                         onOpenRules();
                       }}
-                      className="px-4 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all shrink-0 min-h-[40px]"
+                      className="w-full sm:w-auto px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 hover:text-white text-xs font-bold flex items-center justify-center gap-1 transition-all shrink-0 cursor-pointer"
                     >
-                      <Scale className="w-4 h-4" />
-                      <span>Xem Bảng Nội Quy</span>
+                      <Scale className="w-3 h-3" />
+                      <span>Xem Nội Quy</span>
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* SPECIAL DEV CONSOLE ACCESS (RESTRICTED TO DEVELOPER ONLY) */}
+              {/* SPECIAL DEV CONSOLE ACCESS (RESTRICTED TO DEVELOPER ONLY - CHỈ CHO PHÉP TRÊN MÁY TÍNH) */}
               {isDevUser(currentUser?.email) && (
-                <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900 to-emerald-900/20 border border-emerald-500/50 rounded-2xl p-5 space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900 to-emerald-900/20 border border-emerald-500/50 rounded-xl p-3 space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
-                      <div className="text-sm font-bold text-emerald-300 flex items-center gap-2">
-                        <Database className="w-4 h-4 text-emerald-400" />
-                        Quyền hạn DEV: Datastore & Quản trị Hệ thống
+                      <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                        <Database className="w-3.5 h-3.5 text-emerald-400" />
+                        Quyền hạn DEV: Datastore
                       </div>
-                      <div className="text-xs text-slate-400 mt-1">
-                        Kho dữ liệu Firestore trực tiếp (users, rooms, messages, transfers, presence, sanctions) & Bảng kỷ luật.
+                      <div className="text-[10.5px] text-slate-400">
+                        Quản trị cơ sở dữ liệu Firestore trực tiếp (Chỉ hỗ trợ trên Máy tính / Laptop).
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         type="button"
                         onClick={() => {
+                          const isMobileDevice = typeof window !== 'undefined' && (window.innerWidth <= 840 || /mobile|iphone|ipod|android/i.test(navigator.userAgent));
+                          if (isMobileDevice) {
+                            alert('Tính năng DEV DataStore chỉ hoạt động trên Máy Tính (Desktop) màn hình rộng để tránh lỗi hiển thị và thao tác bảng dữ liệu.');
+                            return;
+                          }
                           onClose();
                           if (onOpenDevPage) {
                             onOpenDevPage();
@@ -2162,22 +2124,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             window.location.href = '/?page=datastore';
                           }
                         }}
-                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-600/30 flex items-center gap-1.5 transition-all min-h-[40px]"
+                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-sm flex items-center gap-1 transition-all"
                       >
-                        <Database className="w-4 h-4" />
-                        <span>Mở Datastore</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onClose();
-                          window.open('/?page=datastore', '_blank');
-                        }}
-                        className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 transition-all flex items-center gap-1 min-h-[40px]"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
+                        <Database className="w-3 h-3" />
+                        <span>Mở Datastore (Chỉ PC)</span>
                       </button>
                     </div>
+                  </div>
+                  <div className="text-[9.5px] text-amber-400/80 italic flex items-center gap-1">
+                    <ShieldAlert className="w-3 h-3 shrink-0" />
+                    <span>Không hỗ trợ trên điện thoại do giao diện bảng dữ liệu Firestore chỉ dành cho máy tính.</span>
                   </div>
                 </div>
               )}
@@ -2188,19 +2144,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* ============================================================ */}
         {/* MODAL FOOTER */}
         {/* ============================================================ */}
-        <div className="px-6 py-4 border-t border-slate-800/90 bg-slate-950/70 flex items-center justify-between shrink-0">
-          <div className="text-xs text-slate-400">
+        <div className="px-3 py-2 sm:px-4 sm:py-2.5 border-t border-slate-800/90 bg-slate-950/70 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shrink-0">
+          <div className="text-xs text-slate-400 min-h-[16px] flex items-center">
             {savedSuccess && (
-              <span className="text-emerald-400 font-bold flex items-center gap-1.5 animate-in fade-in">
-                <Check className="w-4 h-4 stroke-[3]" /> Đã lưu cài đặt & thiết kế thành công!
+              <span className="text-emerald-400 font-bold flex items-center gap-1 text-[11px] animate-in fade-in">
+                <Check className="w-3.5 h-3.5 stroke-[3]" /> Đã lưu cài đặt thành công!
               </span>
             )}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 text-xs sm:text-sm font-medium text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors min-h-[44px]"
+              className="flex-1 sm:flex-initial px-3.5 py-1.5 text-xs font-medium text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer text-center"
             >
               Đóng
             </button>
@@ -2209,9 +2165,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               type="button"
               onClick={handleSave}
               disabled={isSaving}
-              className="px-6 py-2.5 text-xs sm:text-sm font-bold rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-600/30 transition-all flex items-center gap-2 disabled:opacity-50 min-h-[44px] border border-emerald-400/30 active:scale-[0.99]"
+              className="flex-1 sm:flex-initial px-4 py-1.5 text-xs font-bold rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-md shadow-emerald-600/30 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 border border-emerald-400/30 active:scale-[0.99] cursor-pointer"
             >
-              {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4 stroke-[2.5]" />}
+              {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5 stroke-[2.5]" />}
               <span>Lưu thay đổi</span>
             </button>
           </div>

@@ -5,6 +5,7 @@ import {
   ShieldAlert, 
   Users, 
   MessagesSquare, 
+  MessageSquare,
   Eye, 
   Trash2, 
   Ban, 
@@ -42,7 +43,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { ChatRoom, ChatMessage, UserSanction, UserDevice } from '../types';
-import { applyDevSanction, removeDevSanction, isDevUser } from '../utils/devModeration';
+import { applyTierSanction, removeDevSanction, isDevUser, SANCTION_TIERS } from '../utils/devModeration';
 import { runDevContentAudit, censorProfanity, ContentAuditReport } from '../utils/moderation';
 
 interface DevCloudConsoleModalProps {
@@ -92,14 +93,18 @@ export const DevCloudConsoleModal: React.FC<DevCloudConsoleModalProps> = ({
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [riskFilter, setRiskFilter] = useState<'all' | 'danger' | 'banned' | 'online'>('all');
 
-  // Target user discipline modal
+  // Target user discipline modal (Roblox-style 5 Tiers)
   const [targetUserForSanction, setTargetUserForSanction] = useState<{
     uid: string;
     email: string;
     displayName: string;
     currentSanction?: UserSanction;
   } | null>(null);
+  const [selectedTier, setSelectedTier] = useState<'level_1' | 'level_2' | 'level_3' | 'level_4' | 'level_perm'>('level_1');
   const [customReason, setCustomReason] = useState('');
+  const [customRemindText, setCustomRemindText] = useState('');
+  const [customRule, setCustomRule] = useState('Điều 1: Tôn trọng & Ngôn từ trong sạch');
+  const [customOffensiveItem, setCustomOffensiveItem] = useState('');
   const [isProcessingSanction, setIsProcessingSanction] = useState(false);
 
   // Preview full image modal
@@ -368,31 +373,33 @@ export const DevCloudConsoleModal: React.FC<DevCloudConsoleModalProps> = ({
 
   if (!isOpen || !isDevUser(currentUser?.email)) return null;
 
-  // Execute Dev Sanction (Lần 1 Cảnh cáo, Lần 2 Ban 3 ngày, Lần 3 Ban 6 tháng, Lần 4 Vĩnh viễn)
+  // Execute Dev Sanction with Roblox 5-tier system & custom message
   const handleApplySanction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!targetUserForSanction || !currentUser?.email) return;
 
     setIsProcessingSanction(true);
     try {
-      const result = await applyDevSanction({
+      const result = await applyTierSanction({
         targetUid: targetUserForSanction.uid,
         targetEmail: targetUserForSanction.email,
         targetDisplayName: targetUserForSanction.displayName,
-        reason: customReason.trim() || 'Nội dung gửi vi phạm tiêu chuẩn cộng đồng',
+        tier: selectedTier,
+        customReason: customReason.trim() || SANCTION_TIERS[selectedTier].label,
+        customRemindText: customRemindText.trim() || SANCTION_TIERS[selectedTier].remind,
+        ruleViolated: customRule.trim() || 'Tiêu Chuẩn & Nội Quy Cộng Đồng',
+        offensiveItem: customOffensiveItem.trim() || undefined,
+        offensiveItemTimestamp: new Date().toISOString(),
         devEmail: currentUser.email
       });
 
-      const banLabel = 
-        result.lastSanctionType === 'warn' ? '⚠️ Đã gửi CẢNH CÁO LẦN 1' :
-        result.lastSanctionType === 'ban_3d' ? '🚨 Đã BANNED 3 NGÀY (Lần vi phạm 2 - Chặn Gmail)' :
-        result.lastSanctionType === 'ban_6m' ? '🚨 Đã BANNED 6 THÁNG (Lần vi phạm 3 - Chặn Gmail)' :
-        '⛔ ĐÃ BANNED VĨNH VIỄN (Vi phạm từ 4 lần trở lên)';
-
-      setActionSuccessMsg(`${banLabel} cho [${targetUserForSanction.displayName} - ${targetUserForSanction.email}]`);
+      const banLabel = SANCTION_TIERS[selectedTier].label;
+      setActionSuccessMsg(`Đã ban hành bản án kỷ luật Roblox [${banLabel}] cho [${targetUserForSanction.displayName} - ${targetUserForSanction.email}]`);
       setTimeout(() => setActionSuccessMsg(null), 8000);
       setTargetUserForSanction(null);
       setCustomReason('');
+      setCustomRemindText('');
+      setCustomOffensiveItem('');
     } catch (err: any) {
       alert('Không thể thực thi xử phạt: ' + (err?.message || 'Vui lòng thử lại'));
     } finally {
@@ -1265,80 +1272,216 @@ export const DevCloudConsoleModal: React.FC<DevCloudConsoleModalProps> = ({
           </div>
         )}
 
-        {/* Modal Apply Progressive Sanction to Target User */}
+        {/* Modal Apply Roblox 5-Tier Sanction to Target User */}
         {targetUserForSanction && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-            <div className="bg-slate-900 border-2 border-rose-500/50 rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4">
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-in fade-in overflow-y-auto">
+            <div className="bg-slate-900 border-2 border-rose-500/60 rounded-3xl w-full max-w-3xl p-5 sm:p-6 shadow-2xl space-y-4 my-auto">
+              
+              {/* Header */}
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <div className="flex items-center gap-2 text-rose-400 font-bold text-sm">
-                  <UserX className="w-4 h-4" />
-                  <span>Kỷ luật tài khoản thành viên</span>
+                <div className="flex items-center gap-2.5 text-rose-400 font-bold text-sm sm:text-base">
+                  <div className="p-2 rounded-xl bg-rose-500/20 border border-rose-500/40">
+                    <UserX className="w-5 h-5 text-rose-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span>Ban Hành Bản Án Kỷ Luật Chuẩn Roblox</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 font-black">
+                        ROBLOX SAFETY
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 font-normal">
+                      Tùy chỉnh thông điệp nhắc nhở, lý do và mức phạt gửi đến tài khoản người dùng
+                    </p>
+                  </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setTargetUserForSanction(null)}
-                  className="text-slate-400 hover:text-white"
+                  className="p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white transition-colors"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-1">
-                <div>Thành viên: <strong className="text-white">{targetUserForSanction.displayName}</strong></div>
-                <div>Gmail bị chặn: <strong className="text-emerald-400 font-mono">{targetUserForSanction.email}</strong></div>
-                <div>Tiền án hiện tại: <span className="text-amber-400 font-bold">{targetUserForSanction.currentSanction?.violationCount || 0} lần vi phạm</span></div>
+              {/* Target User Info Header */}
+              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                <div>Thành viên: <strong className="text-white block sm:inline">{targetUserForSanction.displayName}</strong></div>
+                <div>Gmail: <strong className="text-emerald-400 font-mono block sm:inline truncate">{targetUserForSanction.email}</strong></div>
+                <div>Lịch sử phạt: <span className="text-amber-400 font-bold block sm:inline">{targetUserForSanction.currentSanction?.violationCount || 0} lần trước đây</span></div>
               </div>
 
-              <form onSubmit={handleApplySanction} className="space-y-3">
+              <form onSubmit={handleApplySanction} className="space-y-4">
+                {/* 5 Tiers Selector */}
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Lý do xử phạt (sẽ hiển thị khi họ đăng nhập):
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                    1. Chọn Cấp Độ Kỷ Luật (5 Mức):
                   </label>
-                  <textarea
-                    required
-                    rows={3}
-                    placeholder="Ví dụ: Cố tình lách luật ghi từ ngữ thô tục, gửi hình ảnh nhạy cảm..."
-                    value={customReason}
-                    onChange={(e) => setCustomReason(e.target.value)}
-                    className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-rose-500"
-                  />
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                    {(['level_1', 'level_2', 'level_3', 'level_4', 'level_perm'] as const).map((tierKey) => {
+                      const t = SANCTION_TIERS[tierKey];
+                      const isSelected = selectedTier === tierKey;
+                      const isPerm = tierKey === 'level_perm';
+
+                      return (
+                        <button
+                          key={tierKey}
+                          type="button"
+                          onClick={() => {
+                            setSelectedTier(tierKey);
+                            setCustomRemindText(t.remind);
+                          }}
+                          className={`p-2.5 rounded-2xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
+                            isSelected
+                              ? isPerm 
+                                ? 'bg-red-700/30 border-red-500 ring-2 ring-red-500 shadow-lg text-white' 
+                                : 'bg-rose-950/50 border-rose-500 ring-2 ring-rose-500 shadow-lg text-white'
+                              : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="font-bold text-[11px] flex items-center justify-between">
+                            <span>{tierKey === 'level_1' ? 'Mức 1 (15m)' : tierKey === 'level_2' ? 'Mức 2 (1h)' : tierKey === 'level_3' ? 'Mức 3 (1d)' : tierKey === 'level_4' ? 'Mức 4 (7d)' : 'Mức 5 (Perm)'}</span>
+                            {isSelected && <span className="w-2 h-2 rounded-full bg-rose-400 animate-ping" />}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-mono mt-1 truncate">
+                            {t.label.split(':')[1]?.trim() || t.label}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                {/* Progressive Ladder Display */}
-                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-200 text-[11px] leading-relaxed">
-                  ⚡ <strong>Cấp độ kỷ luật tiếp theo sẽ được áp dụng:</strong>
-                  {(() => {
-                    const nextCount = (targetUserForSanction.currentSanction?.violationCount || 0) + 1;
-                    return (
-                      <div className="mt-1 font-bold text-rose-300">
-                        {nextCount === 1 && '👉 Lần 1: CẢNH CÁO thành viên (nhắc nhở nội quy)'}
-                        {nextCount === 2 && '👉 Lần 2: BANNED 3 NGÀY (Khóa hoàn toàn tài khoản & chặn Gmail)'}
-                        {nextCount === 3 && '👉 Lần 3: BANNED 6 THÁNG (Khóa hoàn toàn tài khoản & chặn Gmail)'}
-                        {nextCount >= 4 && `👉 Lần ${nextCount}: BANNED VĨNH VIỄN (Thẳng tay xóa quyền truy cập vĩnh viễn)`}
+                {/* Editable Fields */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Moderator Note (Editable) */}
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                        <MessageSquare className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>2. Ghi chú của Người Kiểm Duyệt (Moderator Note - Tùy chỉnh văn bản như trong hình):</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setCustomRemindText(SANCTION_TIERS[selectedTier].remind)}
+                        className="text-[10px] text-slate-400 hover:text-cyan-300 underline font-mono"
+                      >
+                        Khôi phục mẫu mặc định
+                      </button>
+                    </div>
+                    <textarea
+                      required
+                      rows={2}
+                      placeholder="Nhập lời nhắc nhở hoặc thông điệp gửi riêng đến họ..."
+                      value={customRemindText || SANCTION_TIERS[selectedTier].remind}
+                      onChange={(e) => setCustomRemindText(e.target.value)}
+                      className="w-full p-3 rounded-xl bg-[#020712] border border-[#1e3a5f] text-xs sm:text-sm text-cyan-300 italic font-sans focus:outline-none focus:border-cyan-500 shadow-inner"
+                    />
+                  </div>
+
+                  {/* Reason (Editable) */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-300 block">
+                      3. Lý do kỷ luật (Reason):
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ví dụ: Sử dụng từ ngữ thô tục / Vi phạm chuẩn mực cộng đồng"
+                      value={customReason}
+                      onChange={(e) => setCustomReason(e.target.value)}
+                      className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-rose-500"
+                    />
+                  </div>
+
+                  {/* Rule Violated (Editable) */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-300 block">
+                      4. Điều luật vi phạm (Rule):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ví dụ: Điều 1: Tôn trọng & Ngôn từ trong sạch"
+                      value={customRule}
+                      onChange={(e) => setCustomRule(e.target.value)}
+                      className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-emerald-300 focus:outline-none focus:border-emerald-500 font-mono"
+                    />
+                  </div>
+
+                  {/* Offensive Item Evidence (Editable) */}
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-xs font-bold text-rose-300 block">
+                      5. Bằng chứng vi phạm (Offensive Item - Đoạn chat / hình ảnh vi phạm):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Dán đoạn tin nhắn vi phạm thực tế của người dùng vào đây..."
+                      value={customOffensiveItem}
+                      onChange={(e) => setCustomOffensiveItem(e.target.value)}
+                      className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-rose-200 font-mono focus:outline-none focus:border-rose-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Live Roblox Screen Preview Box */}
+                <div className="p-3 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2">
+                  <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Xem Trước Màn Hình Kỷ Luật Roblox của Người Dùng:</span>
+                  </div>
+                  
+                  <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-700/80 text-xs space-y-2 text-slate-200">
+                    <div className="font-bold text-white text-xs sm:text-sm flex items-center justify-between border-b border-slate-800 pb-1.5">
+                      <span className="text-amber-300">
+                        {selectedTier === 'level_1' ? '⚠️ Cảnh Báo (Warning)' :
+                         selectedTier === 'level_2' ? '⏳ Tạm Khóa Chat 1 Tiếng (Chat Suspended)' :
+                         selectedTier === 'level_3' ? '⛔ Khóa Tài Khoản 1 Ngày (Banned for 1 Day)' :
+                         selectedTier === 'level_4' ? '⛔ Khóa Tài Khoản 7 Ngày (Banned for 7 Days)' :
+                         '🚫 Tài Khoản Bị Xóa Vĩnh Viễn (Account Deleted)'}
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">CloudSend Safety</span>
+                    </div>
+
+                    <div className="text-slate-300 text-[11px]">
+                      Reviewed: <strong>{new Date().toLocaleString('vi-VN')}</strong>
+                    </div>
+
+                    <div className="bg-[#020712] p-3 rounded-xl border border-[#1e3a5f] text-cyan-300 italic text-xs font-sans shadow-inner leading-relaxed">
+                      {customRemindText || SANCTION_TIERS[selectedTier].remind}
+                    </div>
+
+                    <div className="text-slate-200 text-[11px]">
+                      Reason: <strong className="text-white">{customReason || SANCTION_TIERS[selectedTier].label}</strong>
+                    </div>
+
+                    {customOffensiveItem && (
+                      <div className="bg-slate-950 p-2 rounded-lg border border-rose-500/40 text-rose-300 font-mono text-[11px]">
+                        Offensive Item: "{customOffensiveItem}"
                       </div>
-                    );
-                  })()}
+                    )}
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-end gap-2 pt-2">
+                {/* Footer Buttons */}
+                <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-800">
                   <button
                     type="button"
                     onClick={() => setTargetUserForSanction(null)}
                     className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-white"
                   >
-                    Hủy
+                    Hủy Bỏ
                   </button>
                   <button
                     type="submit"
                     disabled={isProcessingSanction}
-                    className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-lg shadow-rose-600/30 flex items-center gap-1.5 disabled:opacity-50"
+                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-rose-950/60 flex items-center gap-2 disabled:opacity-50 transition-all active:scale-95 cursor-pointer"
                   >
                     {isProcessingSanction ? (
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <RefreshCw className="w-4 h-4 animate-spin" />
                     ) : (
-                      <Ban className="w-3.5 h-3.5" />
+                      <Ban className="w-4 h-4" />
                     )}
-                    <span>Xác nhận Kỷ luật</span>
+                    <span>Xác Nhận Ban Hành Kỷ Luật Roblox</span>
                   </button>
                 </div>
               </form>

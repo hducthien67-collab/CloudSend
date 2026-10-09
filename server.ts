@@ -11,10 +11,22 @@ dotenv.config();
 
 const PORT = Number(process.env.PORT) || 3000;
 
-// Uploads directory setup
-const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+// Uploads directory setup with fallback for read-only or container environments
+let UPLOADS_DIR = path.join(process.cwd(), 'uploads');
+try {
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  }
+} catch (e) {
+  console.warn('Could not create uploads dir in cwd, falling back to /tmp/uploads:', e);
+  UPLOADS_DIR = path.join('/tmp', 'uploads');
+  try {
+    if (!fs.existsSync(UPLOADS_DIR)) {
+      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    }
+  } catch (tmpErr) {
+    console.warn('Could not create /tmp/uploads dir:', tmpErr);
+  }
 }
 
 // Meta persistence file
@@ -38,15 +50,69 @@ function saveMetaFile() {
   }
 }
 
+// Dangerous extension blacklist
+const DANGEROUS_EXTENSIONS = new Set([
+  'exe', 'bat', 'cmd', 'vbs', 'vbe', 'js', 'jse', 'wsf', 'wsh', 'msc',
+  'ps1', 'ps1xml', 'ps2', 'ps2xml', 'psc1', 'psc2', 'msh', 'msh1', 'msh2', 'mshxml',
+  'sh', 'bash', 'csh', 'ksh', 'zsh',
+  'msi', 'msp', 'mst', 'reg', 'scr', 'pif', 'com', 'hta', 'cpl', 'jar',
+  'dll', 'drv', 'sys', 'ocx', 'vxd',
+  'iso', 'img', 'vhd', 'vhdx', 'lnk', 'gadget'
+]);
+
+function sanitizeServerFilename(filename: string): string {
+  if (!filename) return `clsend-file-${Date.now()}`;
+  let name = filename.replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '');
+  name = name.replace(/[\x00-\x1F\x7F]/g, '');
+  name = name.replace(/^.*[\\\/]/, '');
+  name = name.replace(/[\r\n\t]/g, '');
+  name = name.trim().replace(/^\.+/, '').replace(/\.+$/, '');
+  return name || `clsend-file-${Date.now()}`;
+}
+
+function checkDangerousExtension(filename: string): { blocked: boolean; reason?: string } {
+  const clean = sanitizeServerFilename(filename).toLowerCase();
+  const parts = clean.split('.');
+  if (parts.length > 1) {
+    const lastExt = parts[parts.length - 1];
+    if (DANGEROUS_EXTENSIONS.has(lastExt)) {
+      return { blocked: true, reason: `Định dạng tệp .${lastExt} bị cấm để đảm bảo an toàn.` };
+    }
+  }
+  if (parts.length > 2) {
+    for (let i = 1; i < parts.length; i++) {
+      if (DANGEROUS_EXTENSIONS.has(parts[i])) {
+        return { blocked: true, reason: `Phát hiện nguy cơ đuôi tệp kép (.${parts[i]}).` };
+      }
+    }
+  }
+  return { blocked: false };
+}
+
+function sanitizeSvgBuffer(buffer: Buffer): Buffer {
+  try {
+    let str = buffer.toString('utf-8');
+    str = str.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+    str = str.replace(/\son\w+\s*=\s*(["'][^"']*["']|[^\s>]+)/gi, '');
+    str = str.replace(/href\s*=\s*["']?\s*(javascript|vbscript|data):/gi, 'href="blocked:');
+    str = str.replace(/xlink:href\s*=\s*["']?\s*(javascript|vbscript|data):/gi, 'xlink:href="blocked:');
+    str = str.replace(/<foreignObject\b[^<]*(?:(?!<\/foreignObject>)<[^<]*)*<\/foreignObject>/gi, '');
+    str = str.replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '');
+    return Buffer.from(str, 'utf-8');
+  } catch {
+    return buffer;
+  }
+}
+
 // Multer storage engine - supports files up to 250MB
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
     cb(null, UPLOADS_DIR);
   },
   filename: (_req, file, cb) => {
-    // Keep safe unique filename
-    const ext = path.extname(file.originalname) || '';
-    const uniqueId = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}${ext}`;
+    const ext = path.extname(file.originalname).toLowerCase();
+    const safeExt = ext.replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 10);
+    const uniqueId = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}${safeExt}`;
     cb(null, uniqueId);
   }
 });
@@ -55,6 +121,13 @@ const upload = multer({
   storage,
   limits: {
     fileSize: 250 * 1024 * 1024, // 250 MB limit
+  },
+  fileFilter: (_req, file, cb) => {
+    const check = checkDangerousExtension(file.originalname);
+    if (check.blocked) {
+      return cb(new Error(check.reason || 'Tệp thực thi nguy hiểm không được phép tải lên'));
+    }
+    cb(null, true);
   }
 });
 
@@ -82,11 +155,15 @@ async function startServer() {
   app.use(express.json({ limit: '200mb' }));
   app.use(express.urlencoded({ extended: true, limit: '200mb' }));
 
-  // Primary Health Check for Cloud Run Deployment and Load Balancer
+  // Primary Health Check for Cloud Run Deployment and Load Balancers
+  app.get(['/health', '/_health'], (_req, res) => {
+    res.status(200).send('OK');
+  });
+
   app.get('/api/health', (_req, res) => {
     res.json({
       status: 'ok',
-      service: 'CloudSend API Server',
+      service: 'CLSend API Server',
       timestamp: new Date().toISOString(),
       maxUploadBytes: 250 * 1024 * 1024
     });
@@ -111,7 +188,7 @@ async function startServer() {
     });
   };
 
-  // Heavy File Upload Endpoint (Up to 30MB per request via Cloud Proxy)
+  // Heavy File Upload Endpoint (Up to 250MB per request via Cloud Proxy)
   const processUpload = async (req: express.Request, res: express.Response) => {
     try {
       const file = req.file;
@@ -119,13 +196,27 @@ async function startServer() {
         return res.status(400).json({ success: false, error: 'Không tìm thấy tệp đính kèm' });
       }
 
-      // Safe decoding of utf-8 filename from mobile devices
+      // Safe decoding and sanitization of filename
       let originalName = file.originalname || 'file';
       try {
         originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
       } catch {}
+      originalName = sanitizeServerFilename(originalName);
 
       const ext = path.extname(originalName).toLowerCase();
+      const isSvg = ext === '.svg' || file.mimetype === 'image/svg+xml';
+
+      // Sanitize SVG content on disk to kill stored XSS scripts
+      if (isSvg) {
+        try {
+          const rawBuffer = fs.readFileSync(file.path);
+          const cleanBuffer = sanitizeSvgBuffer(rawBuffer);
+          fs.writeFileSync(file.path, cleanBuffer);
+        } catch (svgErr) {
+          console.warn('SVG sanitization error:', svgErr);
+        }
+      }
+
       const isHeic = ext === '.heic' || ext === '.heif' || file.mimetype === 'image/heic' || file.mimetype === 'image/heif';
       const isImage = file.mimetype?.startsWith('image/') || isHeic || /\.(jpe?g|png|gif|webp|heic|heif|bmp|tiff?|avif)$/i.test(ext);
 
@@ -191,6 +282,12 @@ async function startServer() {
         return res.status(400).json({ success: false, error: 'Thiếu thông tin tên tệp hoặc dữ liệu base64' });
       }
 
+      const safeName = sanitizeServerFilename(name);
+      const extCheck = checkDangerousExtension(safeName);
+      if (extCheck.blocked) {
+        return res.status(400).json({ success: false, error: extCheck.reason || 'Tệp nguy hiểm không được phép tải lên.' });
+      }
+
       // Extract base64 payload
       const matches = data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
       let buffer: Buffer;
@@ -207,13 +304,24 @@ async function startServer() {
         return res.status(400).json({ success: false, error: 'Dung lượng tệp vượt quá giới hạn 50MB cho kênh tải nhanh.' });
       }
 
-      const ext = path.extname(name) || '';
-      const uniqueId = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}${ext}`;
+      const ext = path.extname(safeName).toLowerCase();
+      const isSvg = ext === '.svg' || detectedMime === 'image/svg+xml';
+      if (isSvg) {
+        buffer = sanitizeSvgBuffer(buffer);
+      }
+
+      const safeExt = ext.replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 10);
+      const uniqueId = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}${safeExt}`;
       const filePath = path.join(UPLOADS_DIR, uniqueId);
+
+      // Verify path containment
+      if (!path.resolve(filePath).startsWith(path.resolve(UPLOADS_DIR))) {
+        return res.status(400).json({ success: false, error: 'Đường dẫn tệp không hợp lệ.' });
+      }
 
       fs.writeFileSync(filePath, buffer);
 
-      const isHeic = ext.toLowerCase() === '.heic' || ext.toLowerCase() === '.heif' || detectedMime === 'image/heic' || detectedMime === 'image/heif';
+      const isHeic = ext === '.heic' || ext === '.heif' || detectedMime === 'image/heic' || detectedMime === 'image/heif';
       const isImage = detectedMime?.startsWith('image/') || isHeic || /\.(jpe?g|png|gif|webp|heic|heif|bmp|tiff?|avif)$/i.test(ext);
 
       let thumbnailBase64: string | undefined = undefined;
@@ -231,7 +339,7 @@ async function startServer() {
       }
 
       fileMetaMap[uniqueId] = {
-        originalName: name,
+        originalName: safeName,
         size: buffer.length,
         mimeType: isHeic ? 'image/heic' : detectedMime,
         createdAt: new Date().toISOString(),
@@ -247,8 +355,8 @@ async function startServer() {
         success: true,
         file: {
           id: uniqueId,
-          name: name,
-          originalName: name,
+          name: safeName,
+          originalName: safeName,
           size: buffer.length,
           type: isHeic ? 'image/heic' : detectedMime,
           mimeType: isHeic ? 'image/heic' : detectedMime,
@@ -264,25 +372,34 @@ async function startServer() {
     }
   });
 
-  // File Download Endpoint (Forces download with original filename)
+  // File Download Endpoint (Forces download with sanitized original filename and header injection defense)
   app.get('/api/files/download/:id', (req, res) => {
     try {
-      const id = path.basename(req.params.id);
-      const filePath = path.join(UPLOADS_DIR, id);
+      const rawId = path.basename(req.params.id);
+      const filePath = path.join(UPLOADS_DIR, rawId);
+
+      // Verify path containment defense
+      if (!path.resolve(filePath).startsWith(path.resolve(UPLOADS_DIR))) {
+        return res.status(403).send('Forbidden');
+      }
 
       if (!fs.existsSync(filePath)) {
         return res.status(404).send('Tệp không tồn tại hoặc đã hết hạn.');
       }
 
-      const meta = fileMetaMap[id];
-      const customName = (req.query.name as string) || meta?.originalName || id;
+      const meta = fileMetaMap[rawId];
+      const customName = sanitizeServerFilename((req.query.name as string) || meta?.originalName || rawId);
       const mimeType = meta?.mimeType || 'application/octet-stream';
 
+      const safeAscii = customName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '');
+
       res.setHeader('Content-Type', mimeType);
-      res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Length');
       res.setHeader(
         'Content-Disposition',
-        `attachment; filename="${encodeURIComponent(customName)}"; filename*=UTF-8''${encodeURIComponent(customName)}`
+        `attachment; filename="${safeAscii || 'file'}"; filename*=UTF-8''${encodeURIComponent(customName)}`
       );
 
       return res.sendFile(filePath);
@@ -292,18 +409,23 @@ async function startServer() {
     }
   });
 
-  // File Inline View Endpoint (For image/video preview in browser, with instant HEIC -> JPEG conversion)
+  // File Inline View Endpoint (For image/video preview in browser, with sandbox CSP for safety)
   app.get('/api/files/view/:id', async (req, res) => {
     try {
-      const id = path.basename(req.params.id);
-      const filePath = path.join(UPLOADS_DIR, id);
+      const rawId = path.basename(req.params.id);
+      const filePath = path.join(UPLOADS_DIR, rawId);
+
+      // Path containment check
+      if (!path.resolve(filePath).startsWith(path.resolve(UPLOADS_DIR))) {
+        return res.status(403).send('Forbidden');
+      }
 
       if (!fs.existsSync(filePath)) {
         return res.status(404).send('Tệp không tồn tại.');
       }
 
-      const meta = fileMetaMap[id];
-      const ext = path.extname(meta?.originalName || id).toLowerCase();
+      const meta = fileMetaMap[rawId];
+      const ext = path.extname(meta?.originalName || rawId).toLowerCase();
       const isHeic = meta?.isHeic || ext === '.heic' || ext === '.heif' || meta?.mimeType === 'image/heic' || meta?.mimeType === 'image/heif';
 
       if (isHeic) {
@@ -315,6 +437,7 @@ async function startServer() {
             .toBuffer();
           res.setHeader('Content-Type', 'image/jpeg');
           res.setHeader('Content-Disposition', 'inline');
+          res.setHeader('X-Content-Type-Options', 'nosniff');
           return res.send(jpegBuffer);
         } catch (convErr) {
           console.warn('HEIC conversion fallback to raw file:', convErr);
@@ -322,6 +445,12 @@ async function startServer() {
       }
 
       const mimeType = meta?.mimeType || 'application/octet-stream';
+
+      // Security: For SVGs and other active content, enforce sandbox CSP to prevent XSS
+      if (ext === '.svg' || mimeType === 'image/svg+xml' || ext === '.html' || mimeType === 'text/html') {
+        res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox;");
+      }
+      res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('Content-Type', mimeType);
       res.setHeader('Content-Disposition', 'inline');
 
@@ -575,6 +704,160 @@ Trả về kết quả ở định dạng JSON chuẩn:
   });
 
   // ==========================================================
+  // REAL-TIME AI CONTENT MODERATION (OpenAI Moderation API + Gemini AI Hybrid)
+  // ==========================================================
+  app.post('/api/moderation/check-content', async (req, res) => {
+    try {
+      const { text, userEmail, userId } = req.body;
+      const cleanText = String(text || '').trim();
+
+      if (!cleanText || cleanText.length < 2) {
+        return res.json({
+          success: true,
+          isFlagged: false,
+          severity: 'clean',
+          matchedRule: 'An toàn',
+          remindText: '',
+          categories: []
+        });
+      }
+
+      // Check OpenAI Moderation API if OPENAI_API_KEY is available (100% Free endpoint from OpenAI)
+      const openAiKey = process.env.OPENAI_API_KEY;
+      let openAiResult: any = null;
+
+      if (openAiKey) {
+        try {
+          const modResp = await fetch('https://api.openai.com/v1/moderations', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${openAiKey}`
+            },
+            body: JSON.stringify({
+              input: cleanText,
+              model: 'omni-moderation-latest'
+            })
+          });
+          if (modResp.ok) {
+            const data = await modResp.json();
+            const result = data?.results?.[0];
+            if (result && result.flagged) {
+              const flaggedCategories = Object.keys(result.categories || {}).filter(k => result.categories[k]);
+              openAiResult = {
+                flagged: true,
+                categories: flaggedCategories,
+                scores: result.category_scores
+              };
+            }
+          }
+        } catch (e) {
+          console.warn('OpenAI moderation API call warning:', e);
+        }
+      }
+
+      // If OpenAI flagged as violating
+      if (openAiResult && openAiResult.flagged) {
+        const cats = openAiResult.categories || [];
+        const isCritical = cats.some((c: string) => c.includes('violence') || c.includes('self-harm') || c.includes('sexual/minors'));
+        const isHigh = cats.some((c: string) => c.includes('hate') || c.includes('harassment_threatening') || c.includes('sexual'));
+        
+        const severity = isCritical ? 'critical' : isHigh ? 'high' : 'medium';
+        const tier = isCritical ? 'level_4' : isHigh ? 'level_3' : 'level_2';
+        const remindText = 
+          tier === 'level_4' ? '1 lần nữa là sẽ bị cấm tài khoản vĩnh viễn' :
+          tier === 'level_3' ? 'Cảnh cáo rồi vẫn chưa sợ à >:(' :
+          'Đã nhắc nhở cho rồi mà còn cố vi phạm nữa à :((';
+
+        return res.json({
+          success: true,
+          isFlagged: true,
+          source: 'openai_moderation',
+          severity,
+          recommendedTier: tier,
+          matchedRule: `OpenAI AI Moderation: Vi phạm danh mục [${cats.join(', ')}]`,
+          categories: cats,
+          remindText,
+          message: `Nội dung đã bị AI phát hiện vi phạm tiêu chuẩn an toàn (${cats.join(', ')}).`
+        });
+      }
+
+      // Gemini AI Context Fallback / Analysis
+      try {
+        const ai = getAiClient();
+        if (ai) {
+          const prompt = `Bạn là hệ thống AI Kiểm Duyệt Nội Dung cho phòng trò chuyện & chia sẻ tệp CloudSend.
+Kiểm tra xem câu sau có vi phạm tiêu chuẩn cộng đồng (chửi bậy tục tĩu quá đà, xúc phạm danh dự, quấy rối, phân biệt vùng miền, đe dọa, tự hại, khiêu dâm 18+) hay không.
+
+Nội dung:
+"${cleanText}"
+
+Quy định trả về JSON:
+{
+  "isFlagged": boolean,
+  "severity": "clean" | "light" | "medium" | "high" | "critical",
+  "matchedRule": "Tên vi phạm hoặc 'An toàn'",
+  "reason": "Lý do ngắn",
+  "recommendedTier": "level_1" | "level_2" | "level_3" | "level_4" | null,
+  "remindText": "Câu nhắc nhở tương ứng"
+}`;
+
+          const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest'];
+          let geminiResp: any = null;
+          for (const mName of candidateModels) {
+            try {
+              geminiResp = await ai.models.generateContent({
+                model: mName,
+                contents: prompt,
+                config: {
+                  responseMimeType: 'application/json'
+                }
+              });
+              if (geminiResp?.text) break;
+            } catch (mErr) {
+              console.warn(`Gemini model ${mName} moderation attempt notice:`, mErr);
+            }
+          }
+
+          if (geminiResp.text) {
+            const parsed = JSON.parse(geminiResp.text);
+            if (parsed.isFlagged) {
+              return res.json({
+                success: true,
+                isFlagged: true,
+                source: 'gemini_moderation',
+                severity: parsed.severity || 'medium',
+                recommendedTier: parsed.recommendedTier || 'level_2',
+                matchedRule: parsed.matchedRule || 'Vi phạm tiêu chuẩn cộng đồng',
+                remindText: parsed.remindText || 'Cảnh cáo: Nội dung của bạn không phù hợp.',
+                message: parsed.reason || 'Nội dung bị AI kiểm duyệt chặn do vi phạm quy định.'
+              });
+            }
+          }
+        }
+      } catch (gemErr) {
+        console.warn('Gemini moderation check notice:', gemErr);
+      }
+
+      return res.json({
+        success: true,
+        isFlagged: false,
+        severity: 'clean',
+        matchedRule: 'An toàn',
+        remindText: '',
+        categories: []
+      });
+    } catch (err: any) {
+      console.warn('Moderation endpoint error:', err);
+      return res.json({
+        success: true,
+        isFlagged: false,
+        severity: 'clean'
+      });
+    }
+  });
+
+  // ==========================================================
   // REAL CLIENT LOCATION DETECTION (City, Region, Country)
   // ==========================================================
   app.get('/api/auth/detect-location', async (req, res) => {
@@ -806,8 +1089,31 @@ Trả về kết quả ở định dạng JSON chuẩn:
     next(err);
   });
 
-  // Vite middleware in development vs Static SPA in production
-  if (process.env.NODE_ENV !== 'production') {
+  // Vite middleware in development vs Static SPA in production / Cloud Run
+  const distPath = path.join(process.cwd(), 'dist');
+  const distIndex = path.join(distPath, 'index.html');
+  const hasDist = fs.existsSync(distIndex);
+  const isCloudRun = Boolean(process.env.K_SERVICE || process.env.K_CONFIGURATION);
+  const isProduction = process.env.NODE_ENV === 'production' || isCloudRun || (hasDist && process.env.NODE_ENV !== 'development');
+
+  if (isProduction) {
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+    }
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api')) {
+        return next();
+      }
+      if (fs.existsSync(distIndex)) {
+        return res.sendFile(distIndex);
+      }
+      const rootIndex = path.join(process.cwd(), 'index.html');
+      if (fs.existsSync(rootIndex)) {
+        return res.sendFile(rootIndex);
+      }
+      return res.status(200).send('<!doctype html><html><body><h1>CLSend Server Running</h1></body></html>');
+    });
+  } else {
     try {
       const { createServer: createViteServer } = await import('vite');
       const vite = await createViteServer({
@@ -817,28 +1123,40 @@ Trả về kết quả ở định dạng JSON chuẩn:
       app.use(vite.middlewares);
     } catch (viteErr) {
       console.warn('Vite dev middleware failed to load, fallback to static serve:', viteErr);
-    }
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    const distIndex = path.join(distPath, 'index.html');
-    app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
-      if (fs.existsSync(distIndex)) {
-        res.sendFile(distIndex);
-      } else {
+      if (fs.existsSync(distPath)) {
+        app.use(express.static(distPath));
+      }
+      app.get('*', (req, res, next) => {
+        if (req.path.startsWith('/api')) return next();
+        if (fs.existsSync(distIndex)) {
+          return res.sendFile(distIndex);
+        }
         const rootIndex = path.join(process.cwd(), 'index.html');
         if (fs.existsSync(rootIndex)) {
-          res.sendFile(rootIndex);
-        } else {
-          res.status(500).send('Ứng dụng chưa được biên dịch. Vui lòng chạy npm run build.');
+          return res.sendFile(rootIndex);
         }
-      }
-    });
+        return res.status(200).send('CLSend Server Ready');
+      });
+    }
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
   });
+
+  const gracefulShutdown = (signal: string) => {
+    console.log(`Received ${signal}, closing server gracefully`);
+    server.close(() => {
+      console.log('Server closed successfully');
+      process.exit(0);
+    });
+  };
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 }
 
-startServer();
+startServer().catch((err) => {
+  console.error('Fatal error starting server:', err);
+  process.exit(1);
+});

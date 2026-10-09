@@ -105,6 +105,17 @@ code,
   background: rgba(16, 185, 129, 0.8);
 }
 
+/* Hide scrollbar for mobile screens */
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+.no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
 * {
   -webkit-tap-highlight-color: transparent;
 }
@@ -573,33 +584,34 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* ==========================================================
-   SMART TV & 10-FOOT LEANBACK UI ADAPTATIONS (DPI FIX)
+   SMART TV & 10-FOOT LEANBACK UI ADAPTATIONS
+   Keeps standard responsive layouts on all TV brands (Samsung, LG, Sony, TCL, Android TV)
+   while providing distinct remote control focus indicators
    ========================================================== */
 html.tv-mode {
-  --tv-font-scale: 1.25;
   user-select: none;
-}
-
-html.tv-mode body {
-  padding-left: clamp(16px, 2.5vw, 36px);
-  padding-right: clamp(16px, 2.5vw, 36px);
-  box-sizing: border-box;
 }
 
 html.tv-mode :focus-visible,
 html.tv-mode .tv-focus-target:focus,
-html.tv-mode [tabindex]:focus-visible {
-  outline: none !important;
-  box-shadow: 0 0 0 4px #10b981, 0 0 25px rgba(16, 185, 129, 0.7) !important;
-  transform: scale(1.02);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-  z-index: 40;
+html.tv-mode [tabindex]:focus-visible,
+:focus-visible {
+  outline: 2px solid #10b981 !important;
+  outline-offset: 2px !important;
 }
 
-html.tv-mode button,
-html.tv-mode [role="button"],
-html.tv-mode a {
-  min-height: 48px;
+/* Modal Open: Strict scroll locking across all desktop, mobile, and TV browsers */
+body.modal-open,
+body.modal-open #root,
+body.modal-open main,
+body.modal-open [class*="overflow-y-auto"],
+body.modal-open .overflow-y-auto,
+body.modal-open .overflow-auto,
+body.modal-open .chat-scroll-container,
+body.modal-open [key*="tab"] {
+  overflow: hidden !important;
+  touch-action: none !important;
+  overscroll-behavior: contain !important;
 }
 
 .no-scrollbar::-webkit-scrollbar {

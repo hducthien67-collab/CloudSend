@@ -293,7 +293,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               if (userDocSnap.exists() && isMounted) {
                 const profileData = userDocSnap.data() as UserDevice;
                 setUserProfile(profileData);
-                if (profileData.deviceName) {
+                const hasLocalSettings = Boolean(localStorage.getItem('cloudsend_settings'));
+                if (!hasLocalSettings && profileData.deviceName) {
                   setSettings((prev) => ({
                     ...prev,
                     deviceName: profileData.deviceName,

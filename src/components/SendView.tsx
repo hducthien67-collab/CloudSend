@@ -65,6 +65,7 @@ import {
   MAX_FILE_SIZE_LABEL 
 } from '../utils/fileUpload';
 import { downloadFileSafely } from '../utils/fileDownload';
+import { inspectFileSecurity } from '../utils/fileSecurity';
 import { FileDocIcon, getDocumentTypeInfo } from './FileDocIcon';
 import { CloudDrivePickerModal } from './CloudDrivePickerModal';
 import { SmoothSpaceTextarea } from './SmoothSpaceTextarea';
@@ -137,12 +138,6 @@ export const SendView: React.FC = () => {
     spaceLoopRef.current = requestAnimationFrame(runSpaceLoop);
   };
 
-  const handleTextKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === ' ' || e.code === 'Space') {
-      triggerSpaceStepLoop();
-    }
-  };
-
   // Sending feedback
   const [sendingTargetId, setSendingTargetId] = useState<string | null>(null);
   const [transferStatus, setTransferStatus] = useState<{ [peerId: string]: 'idle' | 'sending' | 'success' | 'error' }>({});
@@ -151,6 +146,39 @@ export const SendView: React.FC = () => {
   // Sent history and modal
   const [sentTransfers, setSentTransfers] = useState<any[]>([]);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
+
+  // Lock body & container scroll when modals are open to prevent background scrolling
+  useEffect(() => {
+    if (isTextModalOpen || showQuickChoiceModal || isCloudPickerOpen || viewingImage) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      document.body.classList.add('modal-open');
+
+      const preventBackgroundScroll = (e: Event) => {
+        const target = e.target as HTMLElement | null;
+        if (target && (target.tagName === 'TEXTAREA' || target.closest('textarea') || target.closest('.modal-scrollable-content'))) {
+          return;
+        }
+        e.preventDefault();
+      };
+
+      window.addEventListener('wheel', preventBackgroundScroll, { passive: false });
+      window.addEventListener('touchmove', preventBackgroundScroll, { passive: false });
+
+      return () => {
+        document.body.style.overflow = originalOverflow;
+        document.body.classList.remove('modal-open');
+        window.removeEventListener('wheel', preventBackgroundScroll);
+        window.removeEventListener('touchmove', preventBackgroundScroll);
+      };
+    }
+  }, [isTextModalOpen, showQuickChoiceModal, isCloudPickerOpen, viewingImage]);
+
+  const handleTextKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === ' ' || e.code === 'Space') {
+      triggerSpaceStepLoop();
+    }
+  };
 
   // Cached raw presence docs ref for periodic 5s freshness ticker
   const latestPresenceDocsRef = useRef<any[]>([]);
@@ -364,13 +392,20 @@ export const SendView: React.FC = () => {
     return () => window.removeEventListener('paste', handleGlobalPaste);
   }, []);
 
-  // Handle file addition (supports multiple files from local disk)
+  // Handle file addition (supports multiple files from local disk with strict security checks)
   const handleFilesAdded = async (fileList: FileList | File[]) => {
     const incoming = Array.from(fileList);
     if (incoming.length === 0) return;
 
     const validFiles: File[] = [];
+    const blockedFiles: string[] = [];
+
     for (const f of incoming) {
+      const sec = inspectFileSecurity(f);
+      if (!sec.isSafe) {
+        blockedFiles.push(f.name);
+        continue;
+      }
       if (f.size > MAX_FILE_SIZE) {
         setStatusMessage(`Tệp "${f.name}" (${formatFileSize(f.size)}) vượt quá giới hạn tối đa ${MAX_FILE_SIZE_LABEL}.`);
       } else {
@@ -378,9 +413,15 @@ export const SendView: React.FC = () => {
       }
     }
 
+    if (blockedFiles.length > 0) {
+      setStatusMessage(`🚫 Đã từ chối ${blockedFiles.length} tệp [${blockedFiles.slice(0, 2).join(', ')}] vì chứa định dạng nguy hiểm.`);
+    }
+
     if (validFiles.length === 0) return;
 
-    setStatusMessage(null);
+    if (blockedFiles.length === 0) {
+      setStatusMessage(null);
+    }
 
     const newItems: SendFileItem[] = validFiles.map((file) => ({
       id: `local_${file.name}_${file.size}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -913,18 +954,31 @@ export const SendView: React.FC = () => {
         </div>
       </div>
 
-      {/* Top Bar / Content Selector */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl">
-        <div className="flex items-center justify-between gap-4 mb-5">
-          <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <UploadCloud className="w-5 h-5 text-emerald-400" />
-              Nội dung cần gửi
-            </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Chọn tệp từ máy, kho Cloud hoặc văn bản để truyền tới các thiết bị khác
-            </p>
+      {/* Top Bar / Content Selector (Compact & Sleek) */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 sm:p-4 shadow-lg">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+              <UploadCloud className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-sm sm:text-base font-bold text-white tracking-tight leading-tight">
+                Nội dung cần gửi
+              </h2>
+              <p className="text-[11px] text-slate-400 hidden sm:block">
+                Chọn tệp, thư mục hoặc văn bản để truyền tới các thiết bị khác
+              </p>
+            </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setIsCloudPickerOpen(true)}
+            className="px-2.5 py-1.5 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30 text-xs font-semibold flex items-center gap-1.5 transition-colors shrink-0 shadow-sm"
+          >
+            <Cloud className="w-3.5 h-3.5 text-sky-400" />
+            <span>Kho Cloud</span>
+          </button>
         </div>
 
         {/* Unified Content Dropzone / Queue */}
@@ -983,56 +1037,45 @@ export const SendView: React.FC = () => {
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             onClick={() => selectedFiles.length === 0 && !textContent.trim() && fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-2xl p-4 sm:p-6 transition-all ${
+            className={`border border-dashed rounded-xl p-3 sm:p-3.5 transition-all ${
               isDragOver
-                ? 'border-emerald-400 bg-emerald-500/10 scale-[1.01]'
+                ? 'border-emerald-400 bg-emerald-500/10 scale-[1.005]'
                 : (selectedFiles.length > 0 || textContent.trim().length > 0)
-                ? 'border-emerald-500/60 bg-emerald-500/5 cursor-default'
-                : 'border-slate-700/80 hover:border-emerald-500/50 bg-slate-950/40 hover:bg-slate-950/60 cursor-pointer'
+                ? 'border-emerald-500/50 bg-emerald-500/5 cursor-default'
+                : 'border-slate-700/70 hover:border-emerald-500/40 bg-slate-950/40 hover:bg-slate-950/60 cursor-pointer'
             }`}
           >
             {(selectedFiles.length > 0 || textContent.trim().length > 0) ? (
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {/* Header info bar */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-800">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                      <Files className="w-4 h-4" />
+                    <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                      <Files className="w-3.5 h-3.5" />
                     </div>
                     <div className="text-left">
-                      <span className="text-sm font-bold text-white block">
+                      <span className="text-xs sm:text-sm font-bold text-white block">
                         Đã chọn {selectedFiles.length > 0 ? `${selectedFiles.length} tệp tin` : ''}
                         {selectedFiles.length > 0 && textContent.trim() ? ' & ' : ''}
                         {textContent.trim() ? '1 tin nhắn văn bản' : ''}
                       </span>
-                      <span className="text-xs text-slate-400">
+                      <span className="text-[11px] text-slate-400">
                         {selectedFiles.length > 0 && `Tổng: ${formatFileSize(selectedFiles.reduce((acc, f) => acc + f.size, 0))} • `}Sẵn sàng gửi
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 self-end sm:self-center flex-wrap">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsCloudPickerOpen(true);
-                      }}
-                      className="px-3 py-1.5 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
-                    >
-                      <Cloud className="w-3.5 h-3.5 text-sky-400" />
-                      <span>Từ Cloud</span>
-                    </button>
+                  <div className="flex items-center gap-1.5 self-end sm:self-center flex-wrap">
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleOpenTextModal(textContent);
                       }}
-                      className="px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
+                      className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-[11px] sm:text-xs font-semibold flex items-center gap-1 transition-all shadow-sm"
                     >
-                      <AlignLeft className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>{textContent.trim() ? 'Sửa văn bản' : 'Viết văn bản'}</span>
+                      <AlignLeft className="w-3 h-3 text-emerald-400" />
+                      <span>{textContent.trim() ? 'Sửa văn bản' : 'Thêm văn bản'}</span>
                     </button>
                     <button
                       type="button"
@@ -1040,9 +1083,9 @@ export const SendView: React.FC = () => {
                         e.stopPropagation();
                         fileInputRef.current?.click();
                       }}
-                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 text-[11px] sm:text-xs font-semibold flex items-center gap-1 transition-all shadow-sm"
                     >
-                      <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                      <Plus className="w-3 h-3 text-emerald-400" />
                       <span>Thêm tệp</span>
                     </button>
                     <button
@@ -1051,31 +1094,31 @@ export const SendView: React.FC = () => {
                         e.stopPropagation();
                         handleClearAllFiles();
                       }}
-                      className="px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
+                      className="px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-[11px] sm:text-xs font-semibold flex items-center gap-1 transition-all shadow-sm"
                     >
-                      <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-                      <span>Xóa tất cả</span>
+                      <Trash2 className="w-3 h-3 text-rose-400" />
+                      <span>Xóa hết</span>
                     </button>
                   </div>
                 </div>
 
                 {/* Text Message Card if text is entered */}
                 {textContent.trim().length > 0 && (
-                  <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 text-left hover:border-slate-700 transition-all space-y-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center shrink-0">
-                          <AlignLeft className="w-4 h-4" />
+                  <div className="p-2.5 sm:p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-left hover:border-slate-700 transition-all space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-6 h-6 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center shrink-0">
+                          <AlignLeft className="w-3.5 h-3.5" />
                         </div>
                         <div className="min-w-0">
                           <span className="text-xs font-bold text-white block">Tin nhắn văn bản</span>
-                          <span className="text-[11px] text-slate-400 block">
+                          <span className="text-[10px] text-slate-400 block">
                             {textContent.split(/\s+/).filter(Boolean).length} từ • {textContent.length} ký tự
                           </span>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex items-center gap-1 shrink-0">
                         <button
                           type="button"
                           title="Chỉnh sửa tin nhắn này"
@@ -1083,7 +1126,7 @@ export const SendView: React.FC = () => {
                             e.stopPropagation();
                             handleOpenTextModal(textContent);
                           }}
-                          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold flex items-center gap-1 transition-colors"
+                          className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white border border-slate-700 text-[11px] font-semibold flex items-center gap-1 transition-colors"
                         >
                           <Edit3 className="w-3 h-3 text-sky-400" />
                           <span>Sửa</span>
@@ -1095,20 +1138,20 @@ export const SendView: React.FC = () => {
                             e.stopPropagation();
                             setTextContent('');
                           }}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                          className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
                         >
-                          <X className="w-4 h-4" />
+                          <X className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
 
-                    <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800/80 text-xs text-slate-200 whitespace-pre-wrap break-words [overflow-wrap:anywhere] max-h-32 overflow-y-auto scrollbar-thin font-mono leading-relaxed">
+                    <div className="p-2 rounded-lg bg-slate-950/80 border border-slate-800/80 text-xs text-slate-200 whitespace-pre-wrap break-words [overflow-wrap:anywhere] max-h-24 overflow-y-auto scrollbar-thin font-mono leading-relaxed">
                       {textContent}
                     </div>
 
                     {/* Detected links preview */}
                     {extractUrls(textContent).length > 0 && (
-                      <div className="flex items-center gap-2 flex-wrap pt-1">
+                      <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
                         <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
                           <Globe className="w-3 h-3" /> Link:
                         </span>
@@ -1131,7 +1174,7 @@ export const SendView: React.FC = () => {
 
                 {/* Files List / Cards */}
                 {selectedFiles.length > 0 && (
-                  <div className="max-h-60 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
+                  <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin">
                     {selectedFiles.map((file, idx) => {
                       const isImg = isImageFile(file);
                       const thumb = fileThumbnails[file.name];
@@ -1139,16 +1182,16 @@ export const SendView: React.FC = () => {
                       return (
                         <div
                           key={`${file.name}_${file.size}_${idx}`}
-                          className="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 text-left hover:border-slate-700 transition-all"
+                          className="flex items-center justify-between gap-2.5 p-2 rounded-xl bg-slate-900/90 border border-slate-800 text-left hover:border-slate-700 transition-all"
                         >
-                          <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex items-center gap-2.5 min-w-0">
                             {isImg ? (
                               <div
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   if (thumb) setViewingImage(thumb);
                                 }}
-                                className={`relative group w-12 h-12 rounded-lg overflow-hidden border border-slate-700 bg-slate-950 shrink-0 ${
+                                className={`relative group w-10 h-10 rounded-lg overflow-hidden border border-slate-700 bg-slate-950 shrink-0 ${
                                   thumb ? 'cursor-pointer' : ''
                                 }`}
                               >
@@ -1156,31 +1199,31 @@ export const SendView: React.FC = () => {
                                   <img src={thumb} alt={file.name} className="w-full h-full object-cover" />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center bg-slate-800 text-emerald-400">
-                                    <ImageIcon className="w-5 h-5" />
+                                    <ImageIcon className="w-4 h-4" />
                                   </div>
                                 )}
                                 {thumb && (
                                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                    <Eye className="w-3.5 h-3.5 text-white" />
+                                    <Eye className="w-3 h-3 text-white" />
                                   </div>
                                 )}
                               </div>
                             ) : (
-                              <FileDocIcon fileName={file.name} mimeType={file.type} size="md" />
+                              <FileDocIcon fileName={file.name} mimeType={file.type} size="sm" />
                             )}
 
                             <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2 flex-wrap">
+                              <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="text-xs font-bold text-white block truncate max-w-[180px] sm:max-w-md">
                                   {file.name}
                                 </span>
                                 {file.isFromCloud && (
-                                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 font-semibold inline-flex items-center gap-1 shrink-0">
-                                    <Cloud className="w-2.5 h-2.5" /> Kho Cloud
+                                  <span className="text-[9px] px-1 py-0.2 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 font-semibold inline-flex items-center gap-0.5 shrink-0">
+                                    <Cloud className="w-2.5 h-2.5" /> Cloud
                                   </span>
                                 )}
                               </div>
-                              <span className="text-[11px] text-slate-400 block mt-0.5">
+                              <span className="text-[10px] text-slate-400 block">
                                 {formatFileSize(file.size)} • {getDocumentTypeInfo(file.name, file.type).label}
                               </span>
                             </div>
@@ -1193,9 +1236,9 @@ export const SendView: React.FC = () => {
                               e.stopPropagation();
                               handleRemoveFile(idx);
                             }}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors shrink-0"
+                            className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors shrink-0"
                           >
-                            <X className="w-4 h-4" />
+                            <X className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       );
@@ -1203,21 +1246,14 @@ export const SendView: React.FC = () => {
                   </div>
                 )}
 
-                <p className="text-xs text-emerald-400 font-medium text-center pt-1">
-                  ✓ Chọn thiết bị ở danh sách bên dưới và nhấn "Gửi đến thiết bị này" để truyền
+                <p className="text-[11px] text-emerald-400 font-medium text-center pt-0.5">
+                  ✓ Chọn thiết bị ở danh sách bên dưới để truyền ngay
                 </p>
               </div>
             ) : (
-              /* Empty state matching the user's design specification (Hình 3) */
-              <div className="py-2 sm:py-3 space-y-4 text-left">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
-                    Lựa chọn
-                  </h3>
-                </div>
-
-                {/* 4 Square/Rounded Action Cards as shown in Hình 3 */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+              /* Compact Sleek Action Grid (4 Buttons) */
+              <div className="py-1 sm:py-1.5 space-y-2.5 text-left">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                   {/* 1. Tập tin */}
                   <button
                     id="pick-file-btn"
@@ -1226,14 +1262,17 @@ export const SendView: React.FC = () => {
                       e.stopPropagation();
                       fileInputRef.current?.click();
                     }}
-                    className="p-5 sm:p-6 rounded-2xl bg-slate-800/90 hover:bg-slate-750 border border-slate-700/80 hover:border-emerald-500/50 flex flex-col items-center justify-center gap-3 text-center cursor-pointer transition-all active:scale-95 shadow-md group"
+                    className="p-2.5 sm:p-3 rounded-xl bg-slate-850 hover:bg-slate-800 border border-slate-700/70 hover:border-emerald-500/50 flex flex-col items-center justify-center gap-1.5 text-center cursor-pointer transition-all active:scale-95 shadow-sm group focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:outline-none"
                   >
-                    <div className="w-9 h-9 rounded-xl bg-slate-700/50 group-hover:bg-emerald-500/20 flex items-center justify-center text-slate-200 group-hover:text-emerald-400 transition-colors">
-                      <FileText className="w-5 h-5" />
+                    <div className="w-8 h-8 rounded-lg bg-slate-700/50 group-hover:bg-emerald-500/20 flex items-center justify-center text-slate-200 group-hover:text-emerald-400 transition-colors shrink-0">
+                      <FileText className="w-4 h-4" />
                     </div>
-                    <span className="text-xs sm:text-sm font-semibold text-slate-200 group-hover:text-white">
-                      Tập tin
-                    </span>
+                    <div>
+                      <span className="text-xs font-bold text-slate-200 group-hover:text-white block leading-tight">
+                        Tập tin
+                      </span>
+                      <span className="text-[10px] text-slate-400 hidden sm:block">Từ thiết bị</span>
+                    </div>
                   </button>
 
                   {/* 2. Thư mục */}
@@ -1244,17 +1283,20 @@ export const SendView: React.FC = () => {
                       e.stopPropagation();
                       folderInputRef.current?.click();
                     }}
-                    className="p-5 sm:p-6 rounded-2xl bg-slate-800/90 hover:bg-slate-750 border border-slate-700/80 hover:border-emerald-500/50 flex flex-col items-center justify-center gap-3 text-center cursor-pointer transition-all active:scale-95 shadow-md group"
+                    className="p-2.5 sm:p-3 rounded-xl bg-slate-850 hover:bg-slate-800 border border-slate-700/70 hover:border-amber-500/50 flex flex-col items-center justify-center gap-1.5 text-center cursor-pointer transition-all active:scale-95 shadow-sm group focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:outline-none"
                   >
-                    <div className="w-9 h-9 rounded-xl bg-slate-700/50 group-hover:bg-amber-500/20 flex items-center justify-center text-slate-200 group-hover:text-amber-400 transition-colors">
-                      <Folder className="w-5 h-5" />
+                    <div className="w-8 h-8 rounded-lg bg-slate-700/50 group-hover:bg-amber-500/20 flex items-center justify-center text-slate-200 group-hover:text-amber-400 transition-colors shrink-0">
+                      <Folder className="w-4 h-4" />
                     </div>
-                    <span className="text-xs sm:text-sm font-semibold text-slate-200 group-hover:text-white">
-                      Thư mục
-                    </span>
+                    <div>
+                      <span className="text-xs font-bold text-slate-200 group-hover:text-white block leading-tight">
+                        Thư mục
+                      </span>
+                      <span className="text-[10px] text-slate-400 hidden sm:block">Cả thư mục</span>
+                    </div>
                   </button>
 
-                  {/* 3. Văn bản -> opens Text Modal (Image 1) */}
+                  {/* 3. Văn bản -> opens Text Modal */}
                   <button
                     id="pick-text-btn"
                     type="button"
@@ -1262,14 +1304,17 @@ export const SendView: React.FC = () => {
                       e.stopPropagation();
                       handleOpenTextModal();
                     }}
-                    className="p-5 sm:p-6 rounded-2xl bg-slate-800/90 hover:bg-slate-750 border border-slate-700/80 hover:border-emerald-500/50 flex flex-col items-center justify-center gap-3 text-center cursor-pointer transition-all active:scale-95 shadow-md group"
+                    className="p-2.5 sm:p-3 rounded-xl bg-slate-850 hover:bg-slate-800 border border-slate-700/70 hover:border-sky-500/50 flex flex-col items-center justify-center gap-1.5 text-center cursor-pointer transition-all active:scale-95 shadow-sm group focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:outline-none"
                   >
-                    <div className="w-9 h-9 rounded-xl bg-slate-700/50 group-hover:bg-sky-500/20 flex items-center justify-center text-slate-200 group-hover:text-sky-400 transition-colors">
-                      <AlignLeft className="w-5 h-5" />
+                    <div className="w-8 h-8 rounded-lg bg-slate-700/50 group-hover:bg-sky-500/20 flex items-center justify-center text-slate-200 group-hover:text-sky-400 transition-colors shrink-0">
+                      <AlignLeft className="w-4 h-4" />
                     </div>
-                    <span className="text-xs sm:text-sm font-semibold text-slate-200 group-hover:text-white">
-                      Văn bản
-                    </span>
+                    <div>
+                      <span className="text-xs font-bold text-slate-200 group-hover:text-white block leading-tight">
+                        Văn bản
+                      </span>
+                      <span className="text-[10px] text-slate-400 hidden sm:block">Nhập tin nhắn</span>
+                    </div>
                   </button>
 
                   {/* 4. Dán */}
@@ -1280,33 +1325,24 @@ export const SendView: React.FC = () => {
                       e.stopPropagation();
                       handlePasteAction();
                     }}
-                    className="p-5 sm:p-6 rounded-2xl bg-slate-800/90 hover:bg-slate-750 border border-slate-700/80 hover:border-emerald-500/50 flex flex-col items-center justify-center gap-3 text-center cursor-pointer transition-all active:scale-95 shadow-md group"
+                    className="p-2.5 sm:p-3 rounded-xl bg-slate-850 hover:bg-slate-800 border border-slate-700/70 hover:border-teal-500/50 flex flex-col items-center justify-center gap-1.5 text-center cursor-pointer transition-all active:scale-95 shadow-sm group focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:outline-none"
                   >
-                    <div className="w-9 h-9 rounded-xl bg-slate-700/50 group-hover:bg-teal-500/20 flex items-center justify-center text-slate-200 group-hover:text-teal-400 transition-colors">
-                      <Clipboard className="w-5 h-5" />
+                    <div className="w-8 h-8 rounded-lg bg-slate-700/50 group-hover:bg-teal-500/20 flex items-center justify-center text-slate-200 group-hover:text-teal-400 transition-colors shrink-0">
+                      <Clipboard className="w-4 h-4" />
                     </div>
-                    <span className="text-xs sm:text-sm font-semibold text-slate-200 group-hover:text-white">
-                      Dán
-                    </span>
+                    <div>
+                      <span className="text-xs font-bold text-slate-200 group-hover:text-white block leading-tight">
+                        Dán (Ctrl+V)
+                      </span>
+                      <span className="text-[10px] text-slate-400 hidden sm:block">Bộ nhớ tạm</span>
+                    </div>
                   </button>
                 </div>
 
-                {/* Dropzone helper & Cloud picker */}
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 text-xs text-slate-400">
-                  <span className="text-slate-500">
-                    💡 Bạn cũng có thể kéo thả trực tiếp tệp tin hoặc thư mục vào đây
-                  </span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsCloudPickerOpen(true);
-                    }}
-                    className="px-3 py-1.5 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30 text-xs font-semibold flex items-center gap-1.5 transition-colors"
-                  >
-                    <Cloud className="w-3.5 h-3.5 text-sky-400" />
-                    <span>Chọn từ Kho Cloud</span>
-                  </button>
+                {/* Dropzone subtle helper */}
+                <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                  <span>💡 Kéo thả trực tiếp tệp tin hoặc thư mục vào đây</span>
+                  <span className="hidden sm:inline">Hỗ trợ tới 250 MB/tệp</span>
                 </div>
               </div>
             )}
@@ -1650,16 +1686,25 @@ export const SendView: React.FC = () => {
 
       {/* Quick Choice Modal when clicking an online device without pre-selected content */}
       {showQuickChoiceModal && targetDeviceForQuickChoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                  <Send className="w-5 h-5" />
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-[2px] animate-in fade-in duration-150 touch-none overscroll-none"
+          onClick={() => {
+            setShowQuickChoiceModal(false);
+            setTargetDeviceForQuickChoice(null);
+          }}
+        >
+          <div 
+            className="bg-slate-900 border border-slate-700/80 rounded-2xl p-4 sm:p-5 w-full max-w-sm shadow-2xl space-y-4 text-left animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                  <Send className="w-4 h-4" />
                 </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">Gửi tới {targetDeviceForQuickChoice.deviceName}</h3>
-                  <p className="text-xs text-slate-400">Chọn loại nội dung bạn muốn gửi:</p>
+                <div className="min-w-0">
+                  <h3 className="text-sm sm:text-base font-bold text-white truncate">Gửi tới {targetDeviceForQuickChoice.deviceName}</h3>
+                  <p className="text-[11px] text-slate-400">Chọn loại nội dung muốn gửi:</p>
                 </div>
               </div>
               <button
@@ -1668,14 +1713,14 @@ export const SendView: React.FC = () => {
                   setShowQuickChoiceModal(false);
                   setTargetDeviceForQuickChoice(null);
                 }}
-                className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors"
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors shrink-0"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* 4 Cards matching Hình 3 */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* 4 Compact Cards */}
+            <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
               {/* 1. Tập tin */}
               <button
                 type="button"
@@ -1683,10 +1728,10 @@ export const SendView: React.FC = () => {
                   setShowQuickChoiceModal(false);
                   fileInputRef.current?.click();
                 }}
-                className="p-4 rounded-2xl bg-slate-800/90 hover:bg-slate-750 border border-slate-700/80 hover:border-emerald-500/50 flex flex-col items-center justify-center gap-2 text-center transition-all active:scale-95 group shadow-sm"
+                className="p-3 rounded-xl bg-slate-800/90 hover:bg-slate-750 border border-slate-700/80 hover:border-emerald-500/50 flex flex-col items-center justify-center gap-1.5 text-center transition-all active:scale-95 group shadow-sm focus-visible:ring-2 focus-visible:ring-emerald-400 focus:outline-none"
               >
-                <div className="w-8 h-8 rounded-xl bg-slate-700/50 group-hover:bg-emerald-500/20 flex items-center justify-center text-slate-200 group-hover:text-emerald-400 transition-colors">
-                  <FileText className="w-5 h-5" />
+                <div className="w-7 h-7 rounded-lg bg-slate-700/50 group-hover:bg-emerald-500/20 flex items-center justify-center text-slate-200 group-hover:text-emerald-400 transition-colors">
+                  <FileText className="w-4 h-4" />
                 </div>
                 <span className="text-xs font-semibold text-slate-200 group-hover:text-white">
                   Tập tin
@@ -1700,10 +1745,10 @@ export const SendView: React.FC = () => {
                   setShowQuickChoiceModal(false);
                   folderInputRef.current?.click();
                 }}
-                className="p-4 rounded-2xl bg-slate-800/90 hover:bg-slate-750 border border-slate-700/80 hover:border-emerald-500/50 flex flex-col items-center justify-center gap-2 text-center transition-all active:scale-95 group shadow-sm"
+                className="p-3 rounded-xl bg-slate-800/90 hover:bg-slate-750 border border-slate-700/80 hover:border-amber-500/50 flex flex-col items-center justify-center gap-1.5 text-center transition-all active:scale-95 group shadow-sm focus-visible:ring-2 focus-visible:ring-amber-400 focus:outline-none"
               >
-                <div className="w-8 h-8 rounded-xl bg-slate-700/50 group-hover:bg-amber-500/20 flex items-center justify-center text-slate-200 group-hover:text-amber-400 transition-colors">
-                  <Folder className="w-5 h-5" />
+                <div className="w-7 h-7 rounded-lg bg-slate-700/50 group-hover:bg-amber-500/20 flex items-center justify-center text-slate-200 group-hover:text-amber-400 transition-colors">
+                  <Folder className="w-4 h-4" />
                 </div>
                 <span className="text-xs font-semibold text-slate-200 group-hover:text-white">
                   Thư mục
@@ -1718,10 +1763,10 @@ export const SendView: React.FC = () => {
                   setShowQuickChoiceModal(false);
                   handleOpenTextModal('', target || undefined);
                 }}
-                className="p-4 rounded-2xl bg-slate-800/90 hover:bg-slate-750 border border-slate-700/80 hover:border-emerald-500/50 flex flex-col items-center justify-center gap-2 text-center transition-all active:scale-95 group shadow-sm"
+                className="p-3 rounded-xl bg-slate-800/90 hover:bg-slate-750 border border-slate-700/80 hover:border-sky-500/50 flex flex-col items-center justify-center gap-1.5 text-center transition-all active:scale-95 group shadow-sm focus-visible:ring-2 focus-visible:ring-sky-400 focus:outline-none"
               >
-                <div className="w-8 h-8 rounded-xl bg-slate-700/50 group-hover:bg-sky-500/20 flex items-center justify-center text-slate-200 group-hover:text-sky-400 transition-colors">
-                  <AlignLeft className="w-5 h-5" />
+                <div className="w-7 h-7 rounded-lg bg-slate-700/50 group-hover:bg-sky-500/20 flex items-center justify-center text-slate-200 group-hover:text-sky-400 transition-colors">
+                  <AlignLeft className="w-4 h-4" />
                 </div>
                 <span className="text-xs font-semibold text-slate-200 group-hover:text-white">
                   Văn bản
@@ -1735,10 +1780,10 @@ export const SendView: React.FC = () => {
                   setShowQuickChoiceModal(false);
                   handlePasteAction();
                 }}
-                className="p-4 rounded-2xl bg-slate-800/90 hover:bg-slate-750 border border-slate-700/80 hover:border-emerald-500/50 flex flex-col items-center justify-center gap-2 text-center transition-all active:scale-95 group shadow-sm"
+                className="p-3 rounded-xl bg-slate-800/90 hover:bg-slate-750 border border-slate-700/80 hover:border-teal-500/50 flex flex-col items-center justify-center gap-1.5 text-center transition-all active:scale-95 group shadow-sm focus-visible:ring-2 focus-visible:ring-teal-400 focus:outline-none"
               >
-                <div className="w-8 h-8 rounded-xl bg-slate-700/50 group-hover:bg-teal-500/20 flex items-center justify-center text-slate-200 group-hover:text-teal-400 transition-colors">
-                  <Clipboard className="w-5 h-5" />
+                <div className="w-7 h-7 rounded-lg bg-slate-700/50 group-hover:bg-teal-500/20 flex items-center justify-center text-slate-200 group-hover:text-teal-400 transition-colors">
+                  <Clipboard className="w-4 h-4" />
                 </div>
                 <span className="text-xs font-semibold text-slate-200 group-hover:text-white">
                   Dán
@@ -1746,16 +1791,16 @@ export const SendView: React.FC = () => {
               </button>
             </div>
 
-            <div className="pt-2 border-t border-slate-800">
+            <div className="pt-1.5 border-t border-slate-800">
               <button
                 type="button"
                 onClick={() => {
                   setShowQuickChoiceModal(false);
                   setIsCloudPickerOpen(true);
                 }}
-                className="w-full py-2.5 px-4 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30 text-xs font-semibold flex items-center justify-center gap-2 transition-colors shadow-sm"
+                className="w-full py-2 px-3 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30 text-xs font-semibold flex items-center justify-center gap-2 transition-colors shadow-sm"
               >
-                <Cloud className="w-4 h-4 text-sky-400" />
+                <Cloud className="w-3.5 h-3.5 text-sky-400" />
                 <span>Chọn từ Kho Cloud Drive</span>
               </button>
             </div>
@@ -1763,54 +1808,67 @@ export const SendView: React.FC = () => {
         </div>
       )}
 
-      {/* Text Message Input Modal (Image 1) */}
+      {/* Text Message Input Modal (Compact floating box, background dimmed without lag, body scroll locked) */}
       {isTextModalOpen && (
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-[2px] animate-in fade-in duration-150 touch-none overscroll-none"
           onClick={() => {
             setIsTextModalOpen(false);
             setTargetDeviceForQuickChoice(null);
           }}
         >
           <div 
-            className="bg-[#181e29] border border-slate-700/60 rounded-[26px] p-6 w-full max-w-sm sm:max-w-md shadow-2xl space-y-4 text-left animate-in zoom-in-95 duration-150"
+            className="bg-[#181e29] border border-slate-700/80 rounded-2xl sm:rounded-3xl p-4 sm:p-6 w-full max-w-sm sm:max-w-md shadow-2xl space-y-3.5 text-left animate-in zoom-in-95 duration-150 my-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-base sm:text-lg font-bold text-white tracking-wide">
-              Nhập tin nhắn
-            </h3>
-
-            {/* Input area with animated gliding caret and WYSIWYG Ctrl+B / Ctrl+I formatting */}
-            <div className="rounded-xl overflow-hidden bg-[#242b3b] border border-slate-700/60 focus-within:border-sky-400/80 focus-within:ring-2 focus-within:ring-sky-400/20 transition-all">
-              <RichChatInput
-                id="modal-message-input"
-                value={modalTextValue}
-                onChange={(md) => setModalTextValue(md)}
-                onSend={handleConfirmTextModal}
-                enterKeyMode="newline"
-                placeholder="Nhập tin nhắn... (Bôi đen & Ctrl+B để in đậm, Ctrl+I để in nghiêng)"
-                className="bg-transparent border-0 min-h-[90px]"
-              />
-            </div>
-
-            {/* Actions: Thoát & Xác nhận (styled precisely like Image 1) */}
-            <div className="flex items-center justify-end gap-3 pt-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm sm:text-base font-bold text-white tracking-wide flex items-center gap-2">
+                <AlignLeft className="w-4 h-4 text-sky-400" />
+                <span>Nhập tin nhắn</span>
+              </h3>
               <button
                 type="button"
                 onClick={() => {
                   setIsTextModalOpen(false);
                   setTargetDeviceForQuickChoice(null);
                 }}
-                className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white transition-colors cursor-pointer"
+                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/80 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Input area: Compact, focused, smooth typing without lag */}
+            <div className="rounded-xl overflow-hidden bg-[#242b3b] border border-slate-700/70 focus-within:border-sky-400 focus-within:ring-2 focus-within:ring-sky-400/20 transition-all">
+              <RichChatInput
+                id="modal-message-input"
+                value={modalTextValue}
+                onChange={(md) => setModalTextValue(md)}
+                onSend={handleConfirmTextModal}
+                enterKeyMode="newline"
+                placeholder="Nhập nội dung văn bản cần gửi..."
+                className="bg-transparent border-0 min-h-[100px] max-h-[220px]"
+              />
+            </div>
+
+            {/* Actions: Thoát & Xác nhận */}
+            <div className="flex items-center justify-end gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsTextModalOpen(false);
+                  setTargetDeviceForQuickChoice(null);
+                }}
+                className="px-3.5 py-1.5 text-xs sm:text-sm font-medium text-slate-300 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-slate-800"
               >
                 Thoát
               </button>
               <button
                 type="button"
                 onClick={handleConfirmTextModal}
-                className="px-6 py-2 rounded-full bg-[#9fc5f8] hover:bg-[#b8d5fb] active:scale-95 text-slate-900 text-sm font-semibold shadow-md transition-all cursor-pointer"
+                className="px-5 py-1.5 rounded-full bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 text-xs sm:text-sm font-bold shadow-md transition-all cursor-pointer flex items-center gap-1.5"
               >
-                Xác nhận
+                <span>Xác nhận</span>
               </button>
             </div>
           </div>

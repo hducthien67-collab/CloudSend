@@ -22,7 +22,7 @@ interface RichChatInputProps {
   id?: string;
   value: string;
   onChange: (markdown: string, plainText: string) => void;
-  onSend: () => void;
+  onSend: (currentText?: string) => void;
   onPasteFiles?: (files: File[]) => void;
   onSelectionChange?: (hasSelection: boolean) => void;
   onFormatNotice?: (notice: string) => void;
@@ -278,10 +278,18 @@ export const RichChatInput = forwardRef<RichChatInputHandle, RichChatInputProps>
 
     // 1. Phím Enter gửi tin hoặc xuống dòng
     if (e.key === 'Enter') {
+      // Bỏ qua nếu đang gõ tiếng Việt bằng bộ gõ IME (Unikey, EVKey, bàn phím di động)
+      if (e.nativeEvent.isComposing) {
+        return;
+      }
+
       if (enterKeyMode === 'send') {
         if (!e.shiftKey && !e.ctrlKey) {
           e.preventDefault();
-          onSend();
+          const currentText = editorRef.current 
+            ? serializeNodeToMarkdown(editorRef.current).replace(/^\n+/, '') 
+            : '';
+          onSend(currentText);
           return;
         }
         // Shift + Enter: Xuống hàng tự nhiên
@@ -296,7 +304,10 @@ export const RichChatInput = forwardRef<RichChatInputHandle, RichChatInputProps>
         // Mode 'newline': Enter xuống hàng, Ctrl+Enter gửi
         if (isCtrlOrCmd) {
           e.preventDefault();
-          onSend();
+          const currentText = editorRef.current 
+            ? serializeNodeToMarkdown(editorRef.current).replace(/^\n+/, '') 
+            : '';
+          onSend(currentText);
           return;
         }
       }

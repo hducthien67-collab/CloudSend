@@ -75,6 +75,7 @@ export interface ChatRoom {
   ownerName?: string;
   members?: RoomMember[];
   membersCount?: number;
+  autoWeeklyReset?: boolean;
 }
 
 export interface ChatAttachment {
@@ -92,6 +93,8 @@ export interface ChatMessage {
   senderName: string;
   senderEmail?: string;
   senderDevice: string;
+  senderAvatar?: string;
+  senderAvatarColor?: string;
   text: string;
   rawText?: string; // Original unmasked text preserved for Dev Cloud audit
   isDevMessage?: boolean;
@@ -161,6 +164,7 @@ export interface AppSettings {
   dpiScaleMode?: DpiScaleMode;
   tvModeEnabled?: boolean;
   tvDpiScale?: number; // Zoom multiplier: 1.0, 1.25, 1.4, 1.5, 1.75, 2.0
+  viewMode?: 'auto' | 'mobile' | 'desktop'; // Preferred display layout mode
   themeStyle?: string;
   customBadgeText?: string;
   customBio?: string;
@@ -196,12 +200,17 @@ export interface UserSanction {
   uid: string;
   email: string;
   displayName: string;
+  senderName?: string; // Tên người gửi / người vi phạm
+  senderEmail?: string;
+  actedBy?: string; // Người ban hành kỷ luật (DEV / Moderator / Hệ thống)
   violationCount: number;
   lastSanctionType: SanctionLevel;
   severityLevel?: 'light' | 'medium' | 'high' | 'critical' | 'permanent';
   reason: string;
   remindText?: string;
   ruleViolated?: string;
+  offensiveItem?: string;
+  offensiveItemTimestamp?: string;
   bannedAt?: string;
   banExpiresAt?: string | null; // null for permanent
   isBanned: boolean;
@@ -212,8 +221,10 @@ export interface UserSanction {
     reason: string;
     remindText?: string;
     ruleViolated?: string;
+    offensiveItem?: string;
     timestamp: string;
     actedBy: string;
+    senderName?: string;
   }>;
 }
 

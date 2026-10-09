@@ -15,7 +15,10 @@ import { SettingsModal } from './components/SettingsModal';
 import { DevCloudConsoleModal } from './components/DevCloudConsoleModal';
 import { DevDatastorePage } from './components/DevDatastorePage';
 import { RulesModal } from './components/RulesModal';
-import { db } from './firebase/config';
+import { GoogleDisplayNameModal } from './components/GoogleDisplayNameModal';
+import { RobloxModerationModal } from './components/RobloxModerationModal';
+import { MobileLayout } from './components/mobile/MobileLayout';
+import { db, auth } from './firebase/config';
 import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc } from 'firebase/firestore';
 import { 
   Send, 
@@ -42,10 +45,101 @@ function MainApp() {
   const [isDevConsoleOpen, setIsDevConsoleOpen] = useState(false);
   const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [isMandatoryRules, setIsMandatoryRules] = useState(false);
+  const [isGoogleDisplayNameOpen, setIsGoogleDisplayNameOpen] = useState(false);
   const [incomingCount, setIncomingCount] = useState(0);
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [chatNotification, setChatNotification] = useState<{ id: string; senderName: string; text: string } | null>(null);
   const [copiedNoticeText, setCopiedNoticeText] = useState(false);
+
+  // Real-time Automatic Mobile DPI & Viewport Detection
+  const checkIsMobileDPI = (): boolean => {
+    if (typeof window === 'undefined') return false;
+
+    const width = window.innerWidth;
+    const ua = navigator.userAgent || '';
+    const isMobileUA = /mobile|iphone|ipod|android|blackberry|opera mini|iemobile|wpdesktop/i.test(ua);
+    const isIPad = /ipad/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+    // Large desktop screen (>= 1024px) without mobile UA is Desktop
+    if (width >= 1024 && !isMobileUA) {
+      return false;
+    }
+
+    // Standard phone viewport / mobile preview in DevTools or AI Studio (<= 840px)
+    if (width <= 840) {
+      return true;
+    }
+
+    // Physical screen dimensions for phones
+    const isMobileScreenWidth = typeof window.screen !== 'undefined' && window.screen.width > 0 && window.screen.width <= 840;
+
+    // Coarse touch input with compact width
+    const isCoarseTouch = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+    const isTouchMobileViewport = isCoarseTouch && (width <= 900 || (typeof window.screen !== 'undefined' && window.screen.width <= 900));
+
+    // High DPI mobile phone display
+    const isHighDPIPhone = (window.devicePixelRatio || 1) >= 1.5 && (width <= 900 && (isMobileUA || isCoarseTouch));
+
+    return isMobileScreenWidth || isMobileUA || isTouchMobileViewport || isHighDPIPhone;
+  };
+
+  const [isMobileScreen, setIsMobileScreen] = useState<boolean>(() => checkIsMobileDPI());
+  const [manualViewOverride, setManualViewOverride] = useState<'mobile' | 'desktop' | null>(null);
+
+  // Clear any old stuck localStorage preference from previous turns so user is never locked out of mobile view
+  useEffect(() => {
+    try {
+      localStorage.removeItem('cloudsend_view_mode_pref');
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Listen for real-time window resize, orientation change, and media queries
+  useEffect(() => {
+    const handleResize = () => {
+      const isMobile = checkIsMobileDPI();
+      setIsMobileScreen(isMobile);
+      // When screen size changes (e.g. user toggles device toolbar between PC and Phone in browser or AI Studio),
+      // clear any manual override so the view follows the new device mode immediately
+      setManualViewOverride(null);
+    };
+
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+
+    const mqlWidth = window.matchMedia ? window.matchMedia('(max-width: 840px)') : null;
+    const mqlPointer = window.matchMedia ? window.matchMedia('(pointer: coarse)') : null;
+
+    if (mqlWidth?.addEventListener) {
+      mqlWidth.addEventListener('change', handleResize);
+    }
+    if (mqlPointer?.addEventListener) {
+      mqlPointer.addEventListener('change', handleResize);
+    }
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+      if (mqlWidth?.removeEventListener) {
+        mqlWidth.removeEventListener('change', handleResize);
+      }
+      if (mqlPointer?.removeEventListener) {
+        mqlPointer.removeEventListener('change', handleResize);
+      }
+    };
+  }, []);
+
+  // Active view mode: follows manual override if user explicitly clicked toggle during this screen size,
+  // otherwise 100% automatically follows device DPI / viewport width
+  const isMobileMode = manualViewOverride !== null ? (manualViewOverride === 'mobile') : isMobileScreen;
+
+  const handleToggleViewMode = () => {
+    // If currently mobile, switch to desktop; if desktop, switch to mobile
+    const nextMode = isMobileMode ? 'desktop' : 'mobile';
+    setManualViewOverride(nextMode);
+  };
+
   const notifiedTransfersRef = useRef<Set<string>>(new Set());
   const initialTransfersLoadedRef = useRef(false);
   const activeTabRef = useRef(activeTab);
@@ -72,7 +166,7 @@ function MainApp() {
         if (change.type === 'added') {
           const msg = change.doc.data();
           const msgTime = msg.timestamp || (msg.createdAt ? new Date(msg.createdAt).getTime() : 0);
-          if (msgTime > sessionStartTime && msg.senderId !== currentUser.uid) {
+          if (msgTime > sessionStartTime && msg.senderId !== currentUser.uid && msg.senderDevice !== settings?.deviceName) {
             if (activeTab !== 'chat') {
               setUnreadMessagesCount((prev) => prev + 1);
               if (settings?.soundEnabled) {
@@ -129,6 +223,16 @@ function MainApp() {
       setIsMandatoryRules(true);
       setIsRulesOpen(true);
     }
+
+    // Check if first-time Google login needs to configure display name
+    const isGoogle = Boolean(
+      auth.currentUser?.providerData?.some((p: any) => p.providerId === 'google.com') ||
+      (currentUser.email && !currentUser.email.includes('@cloudsend.local') && !currentUser.email.startsWith('guest_') && Boolean(currentUser.photoURL))
+    );
+    const googleNamePrompted = localStorage.getItem(`cloudsend_google_name_set_${currentUser.uid}`) === 'true';
+    if (isGoogle && !googleNamePrompted) {
+      setIsGoogleDisplayNameOpen(true);
+    }
   }, [currentUser?.uid]);
 
   const handleAcceptRules = () => {
@@ -145,30 +249,26 @@ function MainApp() {
     setIsRulesOpen(true);
   };
 
-  // Apply TV Mode and crisp Vector DPI Scaling dynamically without raster blur
+  // Keep standard crisp responsive sizing on TV (prevent oversized rem blowing up TV browsers)
   const isTv = settings?.deviceType === 'tv' || settings?.tvModeEnabled;
-  const tvScale = settings?.tvDpiScale || 1.4;
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
 
     if (isTv) {
       document.documentElement.classList.add('tv-mode');
-      // Use clean vector root font scaling instead of raster zoom to keep fonts & icons 100% sharp
-      (document.body.style as any).zoom = '1';
-      document.documentElement.style.fontSize = `${16 * tvScale}px`;
     } else {
       document.documentElement.classList.remove('tv-mode');
-      (document.body.style as any).zoom = '1';
-      document.documentElement.style.fontSize = '16px';
     }
+    document.documentElement.style.fontSize = '16px';
+    (document.body.style as any).zoom = '1';
 
     return () => {
-      (document.body.style as any).zoom = '1';
       document.documentElement.classList.remove('tv-mode');
       document.documentElement.style.fontSize = '16px';
+      (document.body.style as any).zoom = '1';
     };
-  }, [isTv, tvScale]);
+  }, [isTv]);
 
   // TV Remote Control Keyboard Navigation (Arrow Keys / Enter / Back / Tab Switch)
   useEffect(() => {
@@ -315,7 +415,35 @@ function MainApp() {
       return <AuthModal />;
     }
 
-    // 2. Đã đăng nhập nhưng KHÔNG PHẢI tài khoản DEV (hducthien67@gmail.com) -> Chặn truy cập 403
+    // 2. Chặn hoàn toàn trên điện thoại di động vì bảng dữ liệu Firestore không hỗ trợ màn hình hẹp
+    if (isMobileMode || checkIsMobileDPI()) {
+      return (
+        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-slate-100 selection:bg-amber-500 selection:text-white">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mb-4 shadow-lg shadow-amber-500/10">
+            <ShieldAlert className="w-7 h-7" />
+          </div>
+          <h1 className="text-base sm:text-lg font-bold text-white mb-2">DEV DataStore Không Hỗ Trợ Trên Điện Thoại</h1>
+          <p className="text-xs text-slate-400 max-w-sm mb-2 leading-relaxed">
+            Hệ thống Quản trị Datastore có bảng cấu trúc dữ liệu Firestore phức tạp, không hỗ trợ thiết bị di động để tránh vỡ khung và thao tác nhầm dữ liệu.
+          </p>
+          <p className="text-[11px] text-amber-300 font-mono bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/20 mb-6 max-w-sm">
+            Vui lòng mở ứng dụng trên Máy tính / Laptop (Desktop) để sử dụng trang này.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              window.history.pushState(null, '', '/');
+              setIsDatastorePage(false);
+            }}
+            className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition-all shadow-md active:scale-95"
+          >
+            Quay lại ứng dụng CloudSend
+          </button>
+        </div>
+      );
+    }
+
+    // 3. Đã đăng nhập nhưng KHÔNG PHẢI tài khoản DEV (hducthien67@gmail.com) -> Chặn truy cập 403
     if (!isDevUser(currentUser.email)) {
       return (
         <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-slate-100 selection:bg-rose-500 selection:text-white">
@@ -361,6 +489,41 @@ function MainApp() {
 
   const isDev = isDevUser(currentUser.email);
 
+  // Render Dedicated Mobile Native Layout if in Mobile mode
+  if (isMobileMode) {
+    return (
+      <>
+        <MobileLayout
+          onToggleViewMode={handleToggleViewMode}
+          onOpenRules={handleOpenRulesManually}
+        />
+
+        {/* First-Time Google Sign-In Display Name Setup Modal */}
+        <GoogleDisplayNameModal
+          isOpen={isGoogleDisplayNameOpen}
+          onClose={() => setIsGoogleDisplayNameOpen(false)}
+        />
+
+        {/* Roblox-Style Moderation & Ban Notice Window */}
+        <RobloxModerationModal
+          onOpenRules={handleOpenRulesManually}
+        />
+
+        {/* Community Rules & Terms of Service Modal */}
+        <RulesModal
+          isOpen={isRulesOpen}
+          isMandatory={isMandatoryRules}
+          onAccept={handleAcceptRules}
+          onClose={() => {
+            if (!isMandatoryRules) {
+              setIsRulesOpen(false);
+            }
+          }}
+        />
+      </>
+    );
+  }
+
   return (
     <div className={`w-full flex flex-col bg-slate-950 text-slate-100 selection:bg-emerald-500 selection:text-slate-900 ${
       activeTab === 'chat' ? 'h-screen max-h-screen overflow-hidden' : 'min-h-screen overflow-x-hidden'
@@ -372,6 +535,7 @@ function MainApp() {
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenRules={handleOpenRulesManually}
         onOpenDevConsole={() => setIsDevConsoleOpen(true)}
+        onToggleViewMode={handleToggleViewMode}
         onOpenDevPage={() => {
           window.history.pushState(null, '', '/?page=datastore');
           setIsDatastorePage(true);
@@ -552,7 +716,7 @@ function MainApp() {
           </div>
         )}
         {activeTab === 'chat' && (
-          <div key="chat-tab" className="w-full flex-1 flex flex-col overflow-hidden h-full animate-tab-switch">
+          <div key="chat-tab" className="w-full flex-1 flex flex-col overflow-hidden h-full animate-tab-switch pb-16 md:pb-0">
             <ChatRoomView />
           </div>
         )}
@@ -580,6 +744,17 @@ function MainApp() {
           window.history.pushState(null, '', '/?page=datastore');
           setIsDatastorePage(true);
         }}
+      />
+
+      {/* First-Time Google Sign-In Display Name Setup Modal */}
+      <GoogleDisplayNameModal
+        isOpen={isGoogleDisplayNameOpen}
+        onClose={() => setIsGoogleDisplayNameOpen(false)}
+      />
+
+      {/* Roblox-Style Moderation & Ban Notice Window */}
+      <RobloxModerationModal
+        onOpenRules={handleOpenRulesManually}
       />
 
       {/* Community Rules & Terms of Service Modal */}

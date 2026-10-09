@@ -184,6 +184,18 @@ export const DevDatastorePage: React.FC<DevDatastorePageProps> = ({ onBackToApp 
   const [userMessages, setUserMessages] = useState<ChatMessage[]>([]);
   const [copiedUid, setCopiedUid] = useState(false);
 
+  // Tùy chỉnh thông điệp nhắc nhở Roblox cho 5 cấp độ (DEV có thể tự chỉnh văn bản gửi đi bất kỳ lúc nào)
+  const [sanctionCustomNotes, setSanctionCustomNotes] = useState<Record<string, string>>({
+    level_1: SANCTION_TIERS.level_1.remind,
+    level_2: SANCTION_TIERS.level_2.remind,
+    level_3: SANCTION_TIERS.level_3.remind,
+    level_4: SANCTION_TIERS.level_4.remind,
+    level_perm: SANCTION_TIERS.level_perm.remind
+  });
+  const [sanctionCustomReason, setSanctionCustomReason] = useState<string>('');
+  const [sanctionCustomRule, setSanctionCustomRule] = useState<string>('Tiêu Chuẩn & Nội Quy Cộng Đồng');
+  const [sanctionCustomOffensiveItem, setSanctionCustomOffensiveItem] = useState<string>('');
+
   // Lắng nghe thông báo riêng và tin nhắn của người dùng đang được chọn thời gian thực
   useEffect(() => {
     if (activeTask !== 'users' || !selectedItemId) {
@@ -209,29 +221,50 @@ export const DevDatastorePage: React.FC<DevDatastorePageProps> = ({ onBackToApp 
       console.warn('Lỗi đọc user_notifications:', err);
     });
 
-    // 2. Lắng nghe/truy vấn tin nhắn của người dùng này qua collection group
-    const qUserMsgs = query(
-      collectionGroup(db, 'messages'),
-      where('senderId', '==', selectedItemId),
-      limit(100)
-    );
-    const unsubUserMsgs = onSnapshot(qUserMsgs, (snapshot) => {
-      const list: ChatMessage[] = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ChatMessage));
+    // 2. Lắng nghe/truy vấn tin nhắn của người dùng này
+    // Lưu ý: Truy vấn trực tiếp các phòng đang có để tránh lỗi COLLECTION_GROUP_ASC index của Firestore
+    const roomMsgUnsubs: (() => void)[] = [];
+    const userMsgMap = new Map<string, ChatMessage>();
+
+    const updateUserMsgList = () => {
+      const list = Array.from(userMsgMap.values());
       list.sort((a, b) => {
         const tA = a.timestamp || (a.createdAt ? new Date(a.createdAt).getTime() : 0);
         const tB = b.timestamp || (b.createdAt ? new Date(b.createdAt).getTime() : 0);
         return tA - tB;
       });
       setUserMessages(list);
-    }, (err) => {
-      console.warn('Lỗi đọc user messages collection group:', err);
+    };
+
+    const targetRoomIds = Array.from(new Set(['public-relay-lounge', ...rooms.map(r => r.id)]));
+    
+    // Lắng nghe tin nhắn của người dùng qua các phòng đang hoạt động (không cần COLLECTION_GROUP index)
+    targetRoomIds.forEach((rId) => {
+      try {
+        const qRoom = query(
+          collection(db, 'rooms', rId, 'messages'),
+          where('senderId', '==', selectedItemId),
+          limit(50)
+        );
+        const unsub = onSnapshot(qRoom, (snap) => {
+          snap.docs.forEach((d) => {
+            userMsgMap.set(d.id, { id: d.id, ...d.data() } as ChatMessage);
+          });
+          updateUserMsgList();
+        }, (err) => {
+          // Bỏ qua lỗi phòng không tồn tại hoặc quyền truy cập
+        });
+        roomMsgUnsubs.push(unsub);
+      } catch (err) {
+        // Safe catch
+      }
     });
 
     return () => {
       unsubNotifs();
-      unsubUserMsgs();
+      roomMsgUnsubs.forEach(u => u());
     };
-  }, [activeTask, selectedItemId]);
+  }, [activeTask, selectedItemId, rooms]);
 
   // Lắng nghe tin nhắn phòng chat đang được chọn thời gian thực (Bao gồm lưu trữ vĩnh viễn không bị mất khi Client xóa)
   useEffect(() => {
@@ -1186,7 +1219,7 @@ export const DevDatastorePage: React.FC<DevDatastorePageProps> = ({ onBackToApp 
     }
   };
 
-  // Áp dụng hình phạt theo 4 nút và nút cấm vĩnh viễn
+  // Áp dụng hình phạt theo 5 cấp độ chuẩn Roblox với văn bản tùy chỉnh
   const handleApplyTierSanction = async (
     tier: 'level_1' | 'level_2' | 'level_3' | 'level_4' | 'level_perm',
     customReason?: string,
@@ -1204,9 +1237,13 @@ export const DevDatastorePage: React.FC<DevDatastorePageProps> = ({ onBackToApp 
     }
 
     const tierConf = SANCTION_TIERS[tier];
+    const customRemind = sanctionCustomNotes[tier]?.trim() || tierConf.remind;
+    const customFinalReason = customReason || sanctionCustomReason.trim() || (aiAuditResult?.summary || tierConf.label);
+    const finalRule = ruleViolated || sanctionCustomRule.trim() || (aiAuditResult?.findings?.[0]?.ruleNumber || 'Tiêu Chuẩn & Nội Quy Cộng Đồng');
+
     const confirmMsg = tier === 'level_perm'
-      ? `⚠️ BẠN CÓ CHẮC CHẮN MUỐN CẤM TÀI KHOẢN [${targetName}] VĨNH VIỄN KHÔNG?\n\nNgười này sẽ bị thu hồi toàn bộ quyền truy cập và cấm đăng nhập vĩnh viễn.`
-      : `Xác nhận áp dụng hình phạt:\n\n• ${tierConf.label}\n• Nhắc nhở gửi tới người dùng: "${tierConf.remind}"\n\nBạn có muốn thực hiện không?`;
+      ? `⚠️ BẠN CÓ CHẮC CHẮN MUỐN CẤM TÀI KHOẢN [${targetName}] VĨNH VIỄN KHÔNG?\n\nNgười này sẽ nhận thông báo Roblox: Account Deleted và bị thu hồi toàn bộ quyền truy cập.`
+      : `Xác nhận áp dụng hình phạt kỷ luật Roblox:\n\n• ${tierConf.label}\n• Ghi chú Moderator gửi đi: "${customRemind}"\n• Lý do: "${customFinalReason}"\n\nBạn có muốn thực hiện không?`;
 
     if (!window.confirm(confirmMsg)) return;
 
@@ -1216,8 +1253,11 @@ export const DevDatastorePage: React.FC<DevDatastorePageProps> = ({ onBackToApp 
         targetEmail,
         targetDisplayName: targetName,
         tier,
-        customReason: customReason || (aiAuditResult?.summary || tierConf.label),
-        ruleViolated: ruleViolated || (aiAuditResult?.findings?.[0]?.ruleNumber || ''),
+        customReason: customFinalReason,
+        customRemindText: customRemind,
+        ruleViolated: finalRule,
+        offensiveItem: sanctionCustomOffensiveItem.trim() || undefined,
+        offensiveItemTimestamp: new Date().toISOString(),
         devEmail: currentUser?.email || DEV_EMAIL
       });
 
@@ -1226,7 +1266,7 @@ export const DevDatastorePage: React.FC<DevDatastorePageProps> = ({ onBackToApp 
         return [updated, ...filtered];
       });
 
-      alert(`✅ Đã áp dụng thành công ${tierConf.label} cho [${targetName}]!\n\nNhắc nhở: "${tierConf.remind}"`);
+      alert(`✅ Đã ban hành bản án kỷ luật Roblox thành công [${tierConf.label}] cho [${targetName}]!\n\nModerator Note: "${customRemind}"`);
     } catch (err) {
       console.error('Apply tier sanction error:', err);
       alert('Gặp lỗi khi lưu kỷ luật vào Firestore.');
@@ -3753,11 +3793,52 @@ export const DevDatastorePage: React.FC<DevDatastorePageProps> = ({ onBackToApp 
                 </div>
               )}
 
-              {/* 4 NÚT HÌNH PHẠT CỐ ĐỊNH & NÚT CẤM VĨNH VIỄN */}
-              <div className="space-y-2.5">
-                <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2 px-1">
-                  <Ban className="w-4 h-4 text-rose-400" />
-                  <span>Bảng Điều Khiển Xử Lý Kỷ Luật (4 Cấp Độ & Cấm Vĩnh Viễn):</span>
+              {/* BẢNG ĐIỀU KHIỂN KỶ LUẬT 5 CẤP ĐỘ CHUẨN ROBLOX (TÙY CHỈNH VĂN BẢN GỬI ĐI) */}
+              <div className="space-y-3.5 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                    <Ban className="w-4 h-4 text-rose-400" />
+                    <span>Bảng Điều Khiển Xử Lý Kỷ Luật Chuẩn Roblox (5 Cấp Độ):</span>
+                  </div>
+                  <span className="text-[10px] text-amber-300 font-mono bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+                    💡 Bạn có thể chỉnh sửa văn bản gửi đi bất kỳ lúc nào
+                  </span>
+                </div>
+
+                {/* Các trường nhập liệu tùy biến cho bản án Roblox */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-slate-300 block">Lý do xử phạt (Reason):</label>
+                    <input
+                      type="text"
+                      placeholder="VD: Sử dụng ngôn từ xúc phạm / Vi phạm quy tắc an toàn"
+                      value={sanctionCustomReason}
+                      onChange={(e) => setSanctionCustomReason(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-rose-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-slate-300 block">Điều luật áp dụng (Rule):</label>
+                    <input
+                      type="text"
+                      placeholder="VD: Điều 1: Tôn trọng & Ngôn từ trong sạch"
+                      value={sanctionCustomRule}
+                      onChange={(e) => setSanctionCustomRule(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-emerald-300 focus:outline-none focus:border-emerald-500 font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-[11px] font-semibold text-rose-300 block">Bằng chứng / Đoạn chat vi phạm (Offensive Item):</label>
+                    <input
+                      type="text"
+                      placeholder="Dán đoạn chat vi phạm của thành viên này vào đây..."
+                      value={sanctionCustomOffensiveItem}
+                      onChange={(e) => setSanctionCustomOffensiveItem(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-rose-200 focus:outline-none focus:border-rose-500 font-mono"
+                    />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -3765,17 +3846,23 @@ export const DevDatastorePage: React.FC<DevDatastorePageProps> = ({ onBackToApp 
                   <div className="p-3.5 rounded-2xl bg-emerald-950/20 border border-emerald-500/30 space-y-2 flex flex-col justify-between">
                     <div>
                       <div className="flex items-center justify-between text-emerald-400 font-bold text-xs">
-                        <span>🟢 Cấp 1: Nhắc Nhở Nhẹ</span>
+                        <span>🟢 Cấp 1: Cảnh Báo (Warning)</span>
                         <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/20">Khóa chat 15 phút</span>
                       </div>
-                      <p className="text-[11px] text-slate-300 mt-1 italic">
-                        "{SANCTION_TIERS.level_1.remind}"
-                      </p>
+                      <div className="mt-1.5 space-y-1">
+                        <span className="text-[10px] text-slate-400 font-mono">Moderator Note:</span>
+                        <input
+                          type="text"
+                          value={sanctionCustomNotes.level_1}
+                          onChange={(e) => setSanctionCustomNotes(prev => ({ ...prev, level_1: e.target.value }))}
+                          className="w-full px-3 py-1.5 rounded-xl bg-[#020712] border border-[#1e3a5f] text-xs text-cyan-300 italic font-sans focus:outline-none focus:border-cyan-500 shadow-inner"
+                        />
+                      </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => handleApplyTierSanction('level_1')}
-                      className="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-all active:scale-95"
+                      className="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-all active:scale-95 shadow-md"
                     >
                       Áp Dụng Cấp 1 (15 Phút)
                     </button>
@@ -3785,17 +3872,23 @@ export const DevDatastorePage: React.FC<DevDatastorePageProps> = ({ onBackToApp 
                   <div className="p-3.5 rounded-2xl bg-amber-950/20 border border-amber-500/30 space-y-2 flex flex-col justify-between">
                     <div>
                       <div className="flex items-center justify-between text-amber-400 font-bold text-xs">
-                        <span>🟡 Cấp 2: Cảnh Báo Vừa</span>
+                        <span>🟡 Cấp 2: Tạm Khóa Chat 1 Tiếng</span>
                         <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20">Khóa chat 1 giờ</span>
                       </div>
-                      <p className="text-[11px] text-slate-300 mt-1 italic">
-                        "{SANCTION_TIERS.level_2.remind}"
-                      </p>
+                      <div className="mt-1.5 space-y-1">
+                        <span className="text-[10px] text-slate-400 font-mono">Moderator Note:</span>
+                        <input
+                          type="text"
+                          value={sanctionCustomNotes.level_2}
+                          onChange={(e) => setSanctionCustomNotes(prev => ({ ...prev, level_2: e.target.value }))}
+                          className="w-full px-3 py-1.5 rounded-xl bg-[#020712] border border-[#1e3a5f] text-xs text-cyan-300 italic font-sans focus:outline-none focus:border-cyan-500 shadow-inner"
+                        />
+                      </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => handleApplyTierSanction('level_2')}
-                      className="w-full py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs transition-all active:scale-95"
+                      className="w-full py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs transition-all active:scale-95 shadow-md"
                     >
                       Áp Dụng Cấp 2 (1 Giờ)
                     </button>
@@ -3805,17 +3898,23 @@ export const DevDatastorePage: React.FC<DevDatastorePageProps> = ({ onBackToApp 
                   <div className="p-3.5 rounded-2xl bg-orange-950/20 border border-orange-500/30 space-y-2 flex flex-col justify-between">
                     <div>
                       <div className="flex items-center justify-between text-orange-400 font-bold text-xs">
-                        <span>🟠 Cấp 3: Kỷ Luật Nghiêm Khắc</span>
-                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-orange-500/20">Khóa chat 24 giờ</span>
+                        <span>🟠 Cấp 3: Banned 1 Ngày</span>
+                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-orange-500/20">Khóa tài khoản 24h</span>
                       </div>
-                      <p className="text-[11px] text-slate-300 mt-1 italic">
-                        "{SANCTION_TIERS.level_3.remind}"
-                      </p>
+                      <div className="mt-1.5 space-y-1">
+                        <span className="text-[10px] text-slate-400 font-mono">Moderator Note:</span>
+                        <input
+                          type="text"
+                          value={sanctionCustomNotes.level_3}
+                          onChange={(e) => setSanctionCustomNotes(prev => ({ ...prev, level_3: e.target.value }))}
+                          className="w-full px-3 py-1.5 rounded-xl bg-[#020712] border border-[#1e3a5f] text-xs text-cyan-300 italic font-sans focus:outline-none focus:border-cyan-500 shadow-inner"
+                        />
+                      </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => handleApplyTierSanction('level_3')}
-                      className="w-full py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs transition-all active:scale-95"
+                      className="w-full py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs transition-all active:scale-95 shadow-md"
                     >
                       Áp Dụng Cấp 3 (1 Ngày)
                     </button>
@@ -3825,42 +3924,60 @@ export const DevDatastorePage: React.FC<DevDatastorePageProps> = ({ onBackToApp 
                   <div className="p-3.5 rounded-2xl bg-rose-950/20 border border-rose-500/30 space-y-2 flex flex-col justify-between">
                     <div>
                       <div className="flex items-center justify-between text-rose-400 font-bold text-xs">
-                        <span>🔴 Cấp 4: Tạm Đình Chỉ</span>
+                        <span>🔴 Cấp 4: Banned 7 Ngày</span>
                         <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-rose-500/20">Khóa 7 ngày</span>
                       </div>
-                      <p className="text-[11px] text-slate-300 mt-1 italic">
-                        "{SANCTION_TIERS.level_4.remind}"
-                      </p>
+                      <div className="mt-1.5 space-y-1">
+                        <span className="text-[10px] text-slate-400 font-mono">Moderator Note:</span>
+                        <input
+                          type="text"
+                          value={sanctionCustomNotes.level_4}
+                          onChange={(e) => setSanctionCustomNotes(prev => ({ ...prev, level_4: e.target.value }))}
+                          className="w-full px-3 py-1.5 rounded-xl bg-[#020712] border border-[#1e3a5f] text-xs text-cyan-300 italic font-sans focus:outline-none focus:border-cyan-500 shadow-inner"
+                        />
+                      </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => handleApplyTierSanction('level_4')}
-                      className="w-full py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs transition-all active:scale-95"
+                      className="w-full py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs transition-all active:scale-95 shadow-md"
                     >
                       Áp Dụng Cấp 4 (7 Ngày)
                     </button>
                   </div>
                 </div>
 
-                {/* Nút Cấm Vĩnh Viễn & Nút Mở Khóa / Ân Xá */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => handleApplyTierSanction('level_perm')}
-                    className="py-3 px-4 rounded-2xl bg-gradient-to-r from-red-700 via-rose-700 to-red-800 hover:from-red-600 hover:to-rose-600 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl shadow-red-950/60 border border-red-500/50 active:scale-95 transition-all"
-                  >
-                    <Ban className="w-4 h-4" />
-                    <span>⛔ CẤM TÀI KHOẢN VĨNH VIỄN</span>
-                  </button>
+                {/* Nút Cấm Vĩnh Viễn (Mức 5) & Nút Mở Khóa / Ân Xá */}
+                <div className="p-3 rounded-2xl bg-red-950/30 border border-red-500/40 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-red-300">⛔ Mức 5 (Tối Cao): Account Deleted (Cấm Vĩnh Viễn)</span>
+                    <span className="text-[10px] text-red-400 font-mono font-bold">Thu hồi quyền vĩnh viễn</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={sanctionCustomNotes.level_perm}
+                    onChange={(e) => setSanctionCustomNotes(prev => ({ ...prev, level_perm: e.target.value }))}
+                    className="w-full px-3 py-1.5 rounded-xl bg-[#020712] border border-[#1e3a5f] text-xs text-cyan-300 italic font-sans focus:outline-none focus:border-cyan-500 shadow-inner"
+                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleApplyTierSanction('level_perm')}
+                      className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-red-700 via-rose-700 to-red-800 hover:from-red-600 hover:to-rose-600 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl shadow-red-950/60 border border-red-500/50 active:scale-95 transition-all"
+                    >
+                      <Ban className="w-4 h-4" />
+                      <span>⛔ CẤM TÀI KHOẢN VĨNH VIỄN</span>
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={() => handleUnbanUser((selectedItemData as any).uid || (selectedItemData as any).id)}
-                    className="py-3 px-4 rounded-2xl bg-slate-900 hover:bg-slate-850 text-emerald-400 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border border-emerald-500/40 active:scale-95 transition-all"
-                  >
-                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                    <span>🟢 Mở Khóa / Ân Xá Toàn Bộ</span>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => handleUnbanUser((selectedItemData as any).uid || (selectedItemData as any).id)}
+                      className="py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-850 text-emerald-400 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border border-emerald-500/40 active:scale-95 transition-all"
+                    >
+                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                      <span>🟢 Mở Khóa / Ân Xá Toàn Bộ</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

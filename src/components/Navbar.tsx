@@ -27,6 +27,7 @@ interface NavbarProps {
   onOpenRules?: () => void;
   onOpenDevConsole?: () => void;
   onOpenDevPage?: () => void;
+  onToggleViewMode?: () => void;
   incomingCount?: number;
   unreadMessagesCount?: number;
 }
@@ -38,6 +39,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenRules,
   onOpenDevConsole,
   onOpenDevPage,
+  onToggleViewMode,
   incomingCount = 0,
   unreadMessagesCount = 0,
 }) => {
@@ -58,24 +60,24 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <header className="sticky top-0 z-40 w-full bg-slate-900 border-b border-slate-800 shadow-md">
-      <div className="w-full px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3 sm:gap-6">
+      <div className="w-full px-2.5 sm:px-4 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-4">
         {/* === GÓC BÊN TRÁI: Logo + Tên + Cụm Tab chuyển đổi === */}
-        <div className="flex items-center gap-3 sm:gap-6 min-w-0">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
           {/* Logo and Brand */}
-          <div className="flex items-center gap-2.5 sm:gap-3 cursor-pointer shrink-0" onClick={() => setActiveTab('send')}>
+          <div className="flex items-center gap-2 sm:gap-2.5 cursor-pointer shrink-0" onClick={() => setActiveTab('send')}>
             <div className="relative group">
-              <CloudSendLogo className="w-9 h-9 sm:w-10 sm:h-10 shadow-lg shadow-emerald-500/10 rounded-xl transition-transform group-hover:scale-105" size={40} />
+              <CloudSendLogo className="w-8 h-8 sm:w-9 sm:h-9 shadow-lg shadow-emerald-500/10 rounded-xl transition-transform group-hover:scale-105" size={36} />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-bold text-white text-sm sm:text-base tracking-tight m-0 p-0 inline-block leading-none">CloudSend</h1>
-                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-mono font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                  <Radio className="w-2.5 h-2.5 animate-pulse" />
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h1 className="font-bold text-white text-sm sm:text-base tracking-tight m-0 p-0 inline-block leading-none">CLSend</h1>
+                <span className="hidden sm:inline-flex items-center gap-1 text-[9px] font-mono font-medium px-1.5 py-0.2 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <Radio className="w-2 h-2 animate-pulse" />
                   Relay
                 </span>
               </div>
-              <p className="text-[10px] sm:text-[11px] text-slate-400 truncate hidden xl:block">
-                Kết nối qua Internet phong cách LocalSend
+              <p className="text-[10px] text-slate-400 truncate hidden xl:block">
+                Truyền tệp siêu tốc & phòng trò chuyện tức thì
               </p>
             </div>
           </div>
@@ -86,7 +88,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               id="nav-send-tab"
               type="button"
               onClick={() => setActiveTab('send')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 activeTab === 'send'
                   ? 'bg-emerald-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
@@ -100,7 +102,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               id="nav-receive-tab"
               type="button"
               onClick={() => setActiveTab('receive')}
-              className={`relative flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 activeTab === 'receive'
                   ? 'bg-emerald-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
@@ -119,7 +121,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               id="nav-chat-tab"
               type="button"
               onClick={() => setActiveTab('chat')}
-              className={`relative flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 activeTab === 'chat'
                   ? 'bg-emerald-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
@@ -136,7 +138,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               id="nav-drive-tab"
               type="button"
               onClick={() => setActiveTab('drive')}
-              className={`relative flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 activeTab === 'drive'
                   ? 'bg-emerald-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
@@ -149,7 +151,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* === GÓC BÊN PHẢI: Thiết bị + Cài đặt + Avatar === */}
-        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* TV Mode Quick Status Pill */}
           {(settings.deviceType === 'tv' || settings.tvModeEnabled) && (
             <button
@@ -157,20 +159,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               type="button"
               onClick={onOpenSettings}
               title="Chế độ Smart TV đang bật. Nhấn để mở Cài đặt & chỉnh DPI"
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-semibold transition-all shadow-sm"
+              className="flex items-center gap-1 px-2 py-1 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-semibold transition-all shadow-sm"
             >
               <Tv className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-              <span className="hidden sm:inline">Smart TV</span>
-              <span className="text-[10px] font-mono px-1.5 py-0.2 bg-amber-500/20 rounded text-amber-200">
-                {settings.tvDpiScale ? `${Math.round(settings.tvDpiScale * 100)}%` : '140%'}
-              </span>
+              <span className="hidden md:inline">Smart TV</span>
             </button>
           )}
 
           {/* Current device preview badge */}
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800/60 border border-slate-700/60 text-xs text-slate-300">
+          <div className="hidden lg:flex items-center gap-2 px-2.5 py-1 rounded-xl bg-slate-800/60 border border-slate-700/60 text-xs text-slate-300">
             <span className="text-emerald-400">{getDeviceIcon()}</span>
-            <span className="font-medium text-white max-w-[140px] truncate">
+            <span className="font-medium text-white max-w-[120px] truncate">
               {settings.deviceName}
             </span>
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
@@ -190,10 +189,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                   }
                 }}
                 title="Mở TRANG WEB DATASTORE (Dành riêng cho DEV)"
-                className="px-2.5 sm:px-3 py-1.5 rounded-lg text-emerald-300 hover:text-white text-xs font-bold transition-all flex items-center gap-1.5"
+                className="px-2 py-1 rounded-lg text-emerald-300 hover:text-white text-xs font-bold transition-all flex items-center gap-1"
               >
-                <Database className="w-4 h-4 text-emerald-400" />
-                <span className="hidden sm:inline">DEV DATASTORE</span>
+                <Database className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="hidden sm:inline">DATASTORE</span>
               </button>
               <button
                 id="open-datastore-tab-btn"
@@ -202,9 +201,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                   window.open('/?page=datastore', '_blank');
                 }}
                 title="Mở trang web Datastore trong TAB MỚI riêng biệt"
-                className="p-1.5 rounded-lg hover:bg-emerald-500/30 text-emerald-300 hover:text-white border-l border-emerald-500/30 transition-colors"
+                className="p-1 rounded-lg hover:bg-emerald-500/30 text-emerald-300 hover:text-white border-l border-emerald-500/30 transition-colors"
               >
-                <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
+                <ExternalLink className="w-3 h-3 text-emerald-400" />
               </button>
             </div>
           )}
@@ -216,10 +215,10 @@ export const Navbar: React.FC<NavbarProps> = ({
               type="button"
               onClick={onOpenRules}
               title="Bảng Nội Quy & Điều Khoản Sử Dụng (Căn cứ xử lý vi phạm)"
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-750 text-slate-300 hover:text-amber-400 border border-slate-700/80 hover:border-amber-500/40 text-xs font-semibold transition-all shadow-sm group"
+              className="flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-750 text-slate-300 hover:text-amber-400 border border-slate-700/80 hover:border-amber-500/40 text-xs font-semibold transition-all shadow-sm group"
             >
-              <Scale className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
-              <span className="hidden sm:inline">Nội quy</span>
+              <Scale className="w-3.5 h-3.5 text-amber-400 group-hover:scale-110 transition-transform" />
+              <span className="hidden md:inline">Nội quy</span>
             </button>
           )}
 
@@ -229,7 +228,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             type="button"
             onClick={onOpenSettings}
             title="Cài đặt (Settings)"
-            className="p-2 sm:p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-750 text-slate-300 hover:text-white border border-slate-700/80 transition-all hover:rotate-45"
+            className="p-1.5 sm:p-2 rounded-xl bg-slate-800/80 hover:bg-slate-750 text-slate-300 hover:text-white border border-slate-700/80 transition-all hover:rotate-45"
           >
             <Settings className="w-4 h-4" />
           </button>

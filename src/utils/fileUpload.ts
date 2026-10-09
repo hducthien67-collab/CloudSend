@@ -1,3 +1,5 @@
+import { inspectFileSecurity, sanitizeFilename } from './fileSecurity';
+
 export interface UploadedFileInfo {
   id: string;
   name: string;
@@ -358,6 +360,12 @@ export async function uploadFileToServer(
   file: File,
   onProgress?: (percent: number) => void
 ): Promise<UploadedFileInfo> {
+  // Security Inspection: Block dangerous executable extensions, double extensions, and dangerous MIME types
+  const securityCheck = inspectFileSecurity(file);
+  if (!securityCheck.isSafe) {
+    throw new Error(securityCheck.error || `Tệp "${file.name}" không đáp ứng tiêu chuẩn an toàn của VeloX.`);
+  }
+
   if (file.size > MAX_FILE_SIZE) {
     throw new Error(`Tệp "${file.name}" (${formatFileSize(file.size)}) vượt quá giới hạn tối đa ${MAX_FILE_SIZE_LABEL}.`);
   }

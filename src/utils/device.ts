@@ -47,7 +47,7 @@ export function detectDeviceType(): DeviceType {
 
   // 2. Mobile Smartphone Detection
   const isMobileUA = /mobile|iphone|ipod|blackberry|opera mini|iemobile|wpdesktop|android.*mobile/i.test(ua);
-  const isMobileDimensions = (maxTouchPoints > 0 && minDim < 600) || window.innerWidth < 640;
+  const isMobileDimensions = maxTouchPoints > 0 && minDim < 600;
   
   if (isMobileUA || isMobileDimensions) {
     return 'mobile';

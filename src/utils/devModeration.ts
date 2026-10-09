@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, query, orderBy, onSnapshot, writeBatch, addDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { UserSanction, SanctionLevel } from '../types';
 
@@ -13,41 +13,41 @@ export function isDevUser(email?: string | null): boolean {
   return email.trim().toLowerCase() === DEV_EMAIL.toLowerCase();
 }
 
-// Sanction configurations according to user requirements
+// Sanction configurations with polished, authoritative Roblox safety community wording
 export const SANCTION_TIERS = {
   level_1: {
     type: 'chat_lock_15m' as SanctionLevel,
     durationMs: 15 * 60 * 1000, // 15 mins
-    label: 'Mức 1 (Nhẹ): Khóa chat 15 phút',
-    remind: 'Lần này chỉ nhắc nhở thôi cẩn thận trong lời nói của bạn nhé :))',
+    label: 'Mức 1 (Nhẹ): Cảnh báo & Khóa chat 15 phút',
+    remind: 'Hệ thống an toàn CLSend ghi nhận lời nói của bạn chưa phù hợp với Tiêu chuẩn Cộng đồng. Lần này chỉ nhắc nhở nhẹ thôi nhé, hãy luôn giữ thái độ lịch sự, văn minh và tôn trọng mọi người trong các cuộc trò chuyện nha :))',
     severity: 'light' as const,
   },
   level_2: {
     type: 'chat_lock_1h' as SanctionLevel,
     durationMs: 60 * 60 * 1000, // 1 hour
     label: 'Mức 2 (Trung bình): Cấm chat 1 tiếng',
-    remind: 'Đã nhắc nhở cho rồi mà còn cố vi phạm nữa à :((',
+    remind: 'Bạn đã được hệ thống nhắc nhở trước đó nhưng vẫn tiếp tục tái phạm. Tính năng trò chuyện của bạn tạm thời bị khóa 1 giờ để suy ngẫm và đọc lại Nội quy trước khi tiếp tục :((',
     severity: 'medium' as const,
   },
   level_3: {
     type: 'ban_1d' as SanctionLevel,
     durationMs: 24 * 60 * 60 * 1000, // 1 day
-    label: 'Mức 3 (Cao): Banned 1 ngày',
-    remind: 'Cảnh cáo rồi vẫn chưa sợ à >:(',
+    label: 'Mức 3 (Cao): Khóa tài khoản 1 ngày (24 Giờ)',
+    remind: 'Cảnh cáo nhiều lần rồi vẫn chưa chịu nghiêm túc tuân thủ sao? Toàn bộ tài khoản của bạn bị đình chỉ truy cập trong 24 giờ để tự chấn chỉnh hành vi >:(',
     severity: 'high' as const,
   },
   level_4: {
     type: 'ban_7d' as SanctionLevel,
     durationMs: 7 * 24 * 60 * 60 * 1000, // 7 days
-    label: 'Mức 4 (Nặng): Khóa 7 ngày',
-    remind: '1 lần nữa là sẽ bị cấm tài khoản vĩnh viễn',
+    label: 'Mức 4 (Nặng): Khóa 7 ngày (Cảnh báo cuối cùng)',
+    remind: 'ĐÂY LÀ LẦN CẢNH BÁO CUỐI CÙNG! Tài khoản của bạn bị khóa 7 ngày. Nếu còn vi phạm thêm bất kỳ 1 lần nào nữa, tài khoản và thiết bị sẽ bị CẤM VĨNH VIỄN khỏi hệ thống!',
     severity: 'critical' as const,
   },
   level_perm: {
     type: 'ban_perm' as SanctionLevel,
     durationMs: null,
     label: 'Mức Tối Cao: Cấm tài khoản vĩnh viễn',
-    remind: 'Tài khoản và thiết bị của bạn đã bị CẤM VĨNH VIỄN do tái phạm nhiều lần hoặc vi phạm đặc biệt nghiêm trọng.',
+    remind: 'Tài khoản và thiết bị của bạn đã bị CẤM TRUY CẬP VĨNH VIỄN do tái phạm nhiều lần hoặc vi phạm tội phạm đặc biệt nghiêm trọng. Mọi quyền truy cập bị hủy bỏ vô thời hạn.',
     severity: 'permanent' as const,
   }
 };
@@ -132,7 +132,7 @@ export async function checkUserBanStatus(email?: string | null, uid?: string | n
 }
 
 /**
- * Apply Dev Sanction with specific tier
+ * Apply Dev Sanction with specific tier & custom Roblox payload
  */
 export async function applyTierSanction(params: {
   targetUid: string;
@@ -140,10 +140,24 @@ export async function applyTierSanction(params: {
   targetDisplayName: string;
   tier: 'level_1' | 'level_2' | 'level_3' | 'level_4' | 'level_perm';
   customReason?: string;
+  customRemindText?: string;
   ruleViolated?: string;
+  offensiveItem?: string;
+  offensiveItemTimestamp?: string;
   devEmail: string;
 }): Promise<UserSanction> {
-  const { targetUid, targetEmail, targetDisplayName, tier, customReason, ruleViolated, devEmail } = params;
+  const { 
+    targetUid, 
+    targetEmail, 
+    targetDisplayName, 
+    tier, 
+    customReason, 
+    customRemindText,
+    ruleViolated, 
+    offensiveItem,
+    offensiveItemTimestamp,
+    devEmail 
+  } = params;
   const cleanEmail = (targetEmail || '').trim().toLowerCase();
   const config = SANCTION_TIERS[tier];
   const now = new Date();
@@ -165,26 +179,34 @@ export async function applyTierSanction(params: {
   const newCount = currentCount + 1;
   const isBanTier = tier === 'level_3' || tier === 'level_4' || tier === 'level_perm';
   const expiresAt = config.durationMs ? new Date(now.getTime() + config.durationMs).toISOString() : null;
+  const remindMessage = customRemindText?.trim() || config.remind;
 
   const historyItem = {
     type: config.type,
     reason: customReason || config.label,
-    remindText: config.remind,
+    remindText: remindMessage,
     ruleViolated: ruleViolated || '',
+    offensiveItem: offensiveItem || '',
     timestamp: now.toISOString(),
-    actedBy: devEmail
+    actedBy: devEmail,
+    senderName: targetDisplayName || cleanEmail || 'Người dùng'
   };
 
   const sanctionData: UserSanction = {
     uid: targetUid,
     email: cleanEmail,
     displayName: targetDisplayName,
+    senderName: targetDisplayName || cleanEmail || 'Người dùng',
+    senderEmail: cleanEmail,
+    actedBy: devEmail,
     violationCount: newCount,
     lastSanctionType: config.type,
     severityLevel: config.severity,
     reason: customReason || config.label,
-    remindText: config.remind,
+    remindText: remindMessage,
     ruleViolated: ruleViolated || '',
+    offensiveItem: offensiveItem || '',
+    offensiveItemTimestamp: offensiveItemTimestamp || now.toISOString(),
     bannedAt: isBanTier ? now.toISOString() : undefined,
     banExpiresAt: isBanTier ? expiresAt : null,
     isBanned: isBanTier,
@@ -210,9 +232,10 @@ export async function applyTierSanction(params: {
       targetUid,
       targetEmail: cleanEmail,
       title: isBanTier ? `🚨 KỶ LUẬT DEV: ${config.label.toUpperCase()}` : `⚠️ CẢNH BÁO DEV: ${config.label.toUpperCase()}`,
-      message: config.remind,
+      message: remindMessage,
       reason: customReason || config.label,
       ruleViolated: ruleViolated || '',
+      offensiveItem: offensiveItem || '',
       createdAt: now.toISOString(),
       timestamp: now.getTime(),
       level: config.type,
@@ -655,3 +678,186 @@ export async function callAiAuditUser(params: {
   // Fallback to client-side rule engine
   return evaluateUserWith12Rules(messages, reports, currentSanction);
 }
+
+/**
+ * Format chat timeline date header in Vietnamese (e.g. "Hôm nay, Thứ Hai • 27/02/2026")
+ */
+export function formatGroupDateHeader(dateInput: string | number | Date | any): string {
+  if (!dateInput) return '';
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return '';
+
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+
+  const yesterday = new Date();
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday = d.toDateString() === yesterday.toDateString();
+
+  const daysOfWeek = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+  const dayOfWeek = daysOfWeek[d.getDay()];
+  const dateFormatted = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+
+  if (isToday) {
+    return `Hôm nay, ${dayOfWeek} • ${dateFormatted}`;
+  }
+  if (isYesterday) {
+    return `Hôm qua, ${dayOfWeek} • ${dateFormatted}`;
+  }
+  return `${dayOfWeek} • ${dateFormatted}`;
+}
+
+/**
+ * Returns date grouping key "YYYY-MM-DD"
+ */
+export function getGroupDateKey(dateInput: string | number | Date | any): string {
+  if (!dateInput) return 'unknown';
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return 'unknown';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Checks if message timestamp is from today (since 00:00:00 today)
+ */
+export function isMessageFromToday(dateInput: string | number | Date | any): boolean {
+  if (!dateInput) return false;
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return false;
+  const today = new Date();
+  return d.toDateString() === today.toDateString();
+}
+
+/**
+ * Returns ISO string for the start of yesterday (00:00:00.000 local time)
+ */
+export function getYesterdayStartIso(): string {
+  const now = new Date();
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+  return yesterday.toISOString();
+}
+
+/**
+ * Checks if a message timestamp is from today or yesterday
+ */
+export function isMessageFromTodayOrYesterday(dateInput: string | number | Date | any): boolean {
+  if (!dateInput) return false;
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return false;
+  const now = new Date();
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+  return d.getTime() >= yesterday.getTime();
+}
+
+/**
+ * Server Reset for DEV:
+ * Deletes all messages or messages older than 7 days in the specified room to prevent server lag.
+ */
+export async function resetRoomMessagesServer(
+  roomId: string,
+  mode: 'all' | 'older_than_7_days',
+  operatorName = 'Quản trị viên DEV'
+): Promise<{ deletedCount: number; success: boolean; message: string }> {
+  try {
+    const messagesRef = collection(db, 'rooms', roomId, 'messages');
+    const snap = await getDocs(messagesRef);
+    if (snap.empty) {
+      return { deletedCount: 0, success: true, message: 'Phòng hiện không có tin nhắn nào để reset.' };
+    }
+
+    const now = Date.now();
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+    
+    const docsToDelete = snap.docs.filter(docSnap => {
+      if (mode === 'all') return true;
+      const data = docSnap.data();
+      const msgTime = new Date(data.createdAt || 0).getTime();
+      return (now - msgTime) > SEVEN_DAYS_MS;
+    });
+
+    if (docsToDelete.length === 0) {
+      return { 
+        deletedCount: 0, 
+        success: true, 
+        message: mode === 'older_than_7_days' 
+          ? 'Không có tin nhắn nào cũ hơn 1 tuần (7 ngày) trong phòng này.' 
+          : 'Không có tin nhắn để xóa.' 
+      };
+    }
+
+    // Batch delete in chunks of 400
+    const chunkSize = 400;
+    for (let i = 0; i < docsToDelete.length; i += chunkSize) {
+      const chunk = docsToDelete.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      chunk.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+
+    // Send server reset announcement
+    try {
+      const cleanModeText = mode === 'all' 
+        ? 'toàn bộ tin nhắn phòng trò chuyện' 
+        : 'các tin nhắn cũ hơn 1 tuần (7 ngày)';
+      await addDoc(collection(db, 'rooms', roomId, 'messages'), {
+        senderId: 'system-server-reset',
+        senderName: '👑 MÁY CHỦ CLOUDSEND (DEV)',
+        senderDevice: 'Máy chủ Hệ thống',
+        text: `⚡ ${operatorName} đã hoàn tất RESET MÁY CHỦ: Đã xóa sạch ${docsToDelete.length} tin nhắn (${cleanModeText}) để tối ưu hóa hiệu năng, giải phóng bộ nhớ và chống giật lag.`,
+        createdAt: new Date().toISOString(),
+        isDevMessage: true,
+        isSystemMessage: true
+      });
+    } catch (annError) {
+      console.warn('Could not post system reset announcement:', annError);
+    }
+
+    return {
+      deletedCount: docsToDelete.length,
+      success: true,
+      message: `Đã reset máy chủ thành công! Đã xóa ${docsToDelete.length} tin nhắn để giải phóng lag.`
+    };
+  } catch (err: any) {
+    console.error('Reset server error:', err);
+    return {
+      deletedCount: 0,
+      success: false,
+      message: err.message || 'Lỗi khi reset máy chủ.'
+    };
+  }
+}
+
+/**
+ * Automatically prunes messages older than 7 days if weekly auto-clean is enabled
+ */
+export async function autoPruneWeeklyMessages(roomId: string): Promise<number> {
+  try {
+    const messagesRef = collection(db, 'rooms', roomId, 'messages');
+    const snap = await getDocs(messagesRef);
+    if (snap.empty) return 0;
+
+    const now = Date.now();
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+    const oldDocs = snap.docs.filter(docSnap => {
+      const data = docSnap.data();
+      const msgTime = new Date(data.createdAt || 0).getTime();
+      return (now - msgTime) > SEVEN_DAYS_MS;
+    });
+
+    if (oldDocs.length === 0) return 0;
+
+    const chunkSize = 400;
+    for (let i = 0; i < oldDocs.length; i += chunkSize) {
+      const chunk = oldDocs.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      chunk.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+
+    return oldDocs.length;
+  } catch (e) {
+    console.warn('Auto prune weekly messages failed:', e);
+    return 0;
+  }
+}
+
