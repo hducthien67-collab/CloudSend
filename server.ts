@@ -171,7 +171,7 @@ async function startServer() {
 
   // Robust Multer error wrapper middleware for /api/upload
   const handleUploadMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    upload.single('file')(req, res, (err: any) => {
+    (upload.single('file') as any)(req, res, (err: any) => {
       if (err) {
         console.error('Multer file upload error:', err);
         let errorMsg = 'Lỗi khi tải tệp lên máy chủ';
@@ -1010,8 +1010,8 @@ Quy định trả về JSON:
       // Gmail SMTP credentials configuration
       const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
       const smtpPort = Number(process.env.SMTP_PORT) || 465;
-      const smtpUser = process.env.GMAIL_USER || process.env.SMTP_USER || 'cloudsendservice@gmail.com';
-      const smtpPass = (process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS || 'levzdsjphbidojkz').replace(/\s+/g, '');
+      const smtpUser = process.env.GMAIL_USER || process.env.SMTP_USER || '';
+      const smtpPass = (process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS || '').replace(/\s+/g, '');
 
       let emailSentReal = false;
       let emailError = null;
