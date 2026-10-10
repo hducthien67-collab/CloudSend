@@ -79,22 +79,28 @@ export async function downloadFileSafely(
   notifyDownload(`Đang chuẩn bị tải về "${safeFileName}"...`, 'info');
 
   try {
+    let resolvedSource = source;
+    // Resolve relative path against current window origin
+    if (resolvedSource.startsWith('/')) {
+      resolvedSource = `${window.location.origin}${resolvedSource}`;
+    }
+
     let blobUrl: string | null = null;
     let createdBlobUrl = false;
 
-    if (source.startsWith('data:')) {
+    if (resolvedSource.startsWith('data:')) {
       // 1. Data URL (Base64) -> Convert to Blob -> blob: URL
-      const blob = dataUrlToBlob(source);
+      const blob = dataUrlToBlob(resolvedSource);
       blobUrl = URL.createObjectURL(blob);
       createdBlobUrl = true;
-    } else if (source.startsWith('blob:')) {
+    } else if (resolvedSource.startsWith('blob:')) {
       // 2. Already a blob URL
-      blobUrl = source;
+      blobUrl = resolvedSource;
     } else {
       // 3. Remote / Relative URL (/api/files/download/:id)
       try {
         if (onProgress) onProgress('downloading');
-        const res = await fetch(source, {
+        const res = await fetch(resolvedSource, {
           method: 'GET',
           headers: { 'Accept': '*/*' },
           cache: 'no-cache'
@@ -108,20 +114,21 @@ export async function downloadFileSafely(
         blobUrl = URL.createObjectURL(blob);
         createdBlobUrl = true;
       } catch (fetchErr) {
-        console.warn('Direct blob fetch failed, trying anchor and hidden iframe fallback:', fetchErr);
+        console.warn('Direct blob fetch failed, trying direct anchor fallback:', fetchErr);
         
         // Fallback Strategy: Direct Anchor with download attribute
         const a = document.createElement('a');
-        a.href = source;
+        a.href = resolvedSource;
         a.download = safeFileName;
         a.target = '_self';
+        a.rel = 'noopener noreferrer';
         a.style.display = 'none';
         document.body.appendChild(a);
         a.click();
         
         setTimeout(() => {
           try { document.body.removeChild(a); } catch {}
-        }, 1000);
+        }, 1500);
 
         if (onProgress) onProgress('completed');
         notifyDownload(`Đã bắt đầu tải xuống "${safeFileName}"!`, 'success');

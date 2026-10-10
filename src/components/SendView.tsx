@@ -82,6 +82,7 @@ export interface SendFileItem {
   viewUrl?: string;
   thumbnail?: string;
   isFromCloud?: boolean;
+  isUrlLink?: boolean;
 }
 
 export const SendView: React.FC = () => {
@@ -111,32 +112,51 @@ export const SendView: React.FC = () => {
   // Text message modal state (Nhập tin nhắn popup matching Image 1)
   const [isTextModalOpen, setIsTextModalOpen] = useState(false);
   const [modalTextValue, setModalTextValue] = useState('');
+  // URL input modal state
+  const [isUrlModalOpen, setIsUrlModalOpen] = useState(false);
+  const [urlModalValue, setUrlModalValue] = useState('');
+
+  const handleUrlAdded = (urlToUse?: string) => {
+    const finalUrl = (urlToUse !== undefined ? urlToUse : urlModalValue).trim();
+    if (!finalUrl) return;
+    let validUrl = finalUrl;
+    if (!validUrl.startsWith('http://') && !validUrl.startsWith('https://')) {
+      validUrl = 'https://' + validUrl;
+    }
+    try {
+      const urlObj = new URL(validUrl);
+      const pathname = urlObj.pathname;
+      const segments = pathname.split('/').filter(Boolean);
+      const rawName = segments[segments.length - 1] || urlObj.hostname;
+      const decodedName = decodeURIComponent(rawName);
+      const fileName = decodedName.includes('.') ? decodedName : `${urlObj.hostname}_link`;
+      const isImage = /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i.test(validUrl);
+
+      const newItem: SendFileItem = {
+        id: `url_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        name: fileName,
+        size: 0,
+        type: isImage ? 'image/jpeg' : 'text/uri-list',
+        cloudUrl: validUrl,
+        viewUrl: validUrl,
+        thumbnail: isImage ? validUrl : undefined,
+        isFromCloud: false,
+        isUrlLink: true
+      };
+      setSelectedFiles(prev => [...prev, newItem]);
+      setUrlModalValue('');
+      setIsUrlModalOpen(false);
+      setShowQuickChoiceModal(false);
+      setStatusMessage(`🔗 Đã thêm URL thành công: ${fileName}`);
+      setTimeout(() => setStatusMessage(null), 3000);
+    } catch {
+      setStatusMessage('⚠️ URL không hợp lệ. Vui lòng kiểm tra lại định dạng https://...');
+      setTimeout(() => setStatusMessage(null), 3000);
+    }
+  };
 
   // Text state
   const [textContent, setTextContent] = useState('');
-  const [spaceStepProgress, setSpaceStepProgress] = useState(1);
-  const spaceLoopRef = useRef<number | null>(null);
-
-  // Vòng lặp tăng tiến t từ 0 -> 1 (bước nhảy 0.05)
-  const triggerSpaceStepLoop = () => {
-    let t = 0;
-    const step = 0.05;
-
-    const runSpaceLoop = () => {
-      t = Math.min(1, parseFloat((t + step).toFixed(4)));
-      setSpaceStepProgress(t);
-
-      if (t < 1) {
-        spaceLoopRef.current = requestAnimationFrame(runSpaceLoop);
-      }
-    };
-
-    if (spaceLoopRef.current !== null) {
-      cancelAnimationFrame(spaceLoopRef.current);
-    }
-    setSpaceStepProgress(0);
-    spaceLoopRef.current = requestAnimationFrame(runSpaceLoop);
-  };
 
   // Sending feedback
   const [sendingTargetId, setSendingTargetId] = useState<string | null>(null);
@@ -149,7 +169,7 @@ export const SendView: React.FC = () => {
 
   // Lock body & container scroll when modals are open to prevent background scrolling
   useEffect(() => {
-    if (isTextModalOpen || showQuickChoiceModal || isCloudPickerOpen || viewingImage) {
+    if (isTextModalOpen || showQuickChoiceModal || isCloudPickerOpen || viewingImage || isUrlModalOpen) {
       const originalOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
       document.body.classList.add('modal-open');
@@ -173,12 +193,6 @@ export const SendView: React.FC = () => {
       };
     }
   }, [isTextModalOpen, showQuickChoiceModal, isCloudPickerOpen, viewingImage]);
-
-  const handleTextKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === ' ' || e.code === 'Space') {
-      triggerSpaceStepLoop();
-    }
-  };
 
   // Cached raw presence docs ref for periodic 5s freshness ticker
   const latestPresenceDocsRef = useRef<any[]>([]);
@@ -1337,6 +1351,26 @@ export const SendView: React.FC = () => {
                       <span className="text-[10px] text-slate-400 hidden sm:block">Bộ nhớ tạm</span>
                     </div>
                   </button>
+                  {/* 5. URL / Liên kết */}
+                  <button
+                    id="pick-url-btn"
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsUrlModalOpen(true);
+                    }}
+                    className="p-2.5 sm:p-3 rounded-xl bg-slate-850 hover:bg-slate-800 border border-slate-700/70 hover:border-indigo-500/50 flex flex-col items-center justify-center gap-1.5 text-center cursor-pointer transition-all active:scale-95 shadow-sm group focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none col-span-2 sm:col-span-1"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-slate-700/50 group-hover:bg-indigo-500/20 flex items-center justify-center text-slate-200 group-hover:text-indigo-400 transition-colors shrink-0">
+                      <LinkIcon className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-slate-200 group-hover:text-white block leading-tight">
+                        URL / Liên kết
+                      </span>
+                      <span className="text-[10px] text-slate-400 hidden sm:block">Dán link web</span>
+                    </div>
+                  </button>
                 </div>
 
                 {/* Dropzone subtle helper */}
@@ -1789,8 +1823,23 @@ export const SendView: React.FC = () => {
                   Dán
                 </span>
               </button>
+              {/* 5. URL */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowQuickChoiceModal(false);
+                  setIsUrlModalOpen(true);
+                }}
+                className="p-3 rounded-xl bg-slate-800/90 hover:bg-slate-750 border border-slate-700/80 hover:border-indigo-500/50 flex flex-col items-center justify-center gap-1.5 text-center transition-all active:scale-95 group shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-400 focus:outline-none col-span-2"
+              >
+                <div className="w-7 h-7 rounded-lg bg-slate-700/50 group-hover:bg-indigo-500/20 flex items-center justify-center text-slate-200 group-hover:text-indigo-400 transition-colors">
+                  <LinkIcon className="w-4 h-4" />
+                </div>
+                <span className="text-xs font-semibold text-slate-200 group-hover:text-white">
+                  URL / Liên kết web
+                </span>
+              </button>
             </div>
-
             <div className="pt-1.5 border-t border-slate-800">
               <button
                 type="button"
@@ -1802,6 +1851,68 @@ export const SendView: React.FC = () => {
               >
                 <Cloud className="w-3.5 h-3.5 text-sky-400" />
                 <span>Chọn từ Kho Cloud Drive</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* URL Input Modal */}
+      {isUrlModalOpen && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-[2px] animate-in fade-in duration-150 touch-none overscroll-none"
+          onClick={() => setIsUrlModalOpen(false)}
+        >
+          <div 
+            className="bg-[#181e29] border border-slate-700/80 rounded-2xl sm:rounded-3xl p-4 sm:p-6 w-full max-w-sm sm:max-w-md shadow-2xl space-y-3.5 text-left animate-in zoom-in-95 duration-150 my-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm sm:text-base font-bold text-white tracking-wide flex items-center gap-2">
+                <LinkIcon className="w-4 h-4 text-indigo-400" />
+                <span>Nhập URL / Liên kết</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsUrlModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/80 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-300">
+              Dán URL của hình ảnh, tài liệu, video hoặc liên kết web bạn muốn gửi:
+            </p>
+            <div className="rounded-xl overflow-hidden bg-[#242b3b] border border-slate-700/70 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-400/20 transition-all p-2.5">
+              <input
+                type="url"
+                value={urlModalValue}
+                onChange={(e) => setUrlModalValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleUrlAdded();
+                  }
+                }}
+                placeholder="https://example.com/file.png hoặc https://..."
+                className="w-full bg-transparent text-white text-xs sm:text-sm focus:outline-none placeholder:text-slate-500 font-mono"
+                autoFocus
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setIsUrlModalOpen(false)}
+                className="px-3.5 py-1.5 text-xs sm:text-sm font-medium text-slate-300 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-slate-800"
+              >
+                Thoát
+              </button>
+              <button
+                type="button"
+                onClick={() => handleUrlAdded()}
+                className="px-5 py-1.5 rounded-full bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs sm:text-sm font-bold shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <span>Xác nhận thêm URL</span>
               </button>
             </div>
           </div>

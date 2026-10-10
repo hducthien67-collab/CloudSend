@@ -161,11 +161,12 @@ export const ReceiveView: React.FC = () => {
     }
   };
 
-  // Handle Decline
+  // Handle Decline: Xóa ngay lập tức khỏi hệ thống khi người nhận từ chối
   const handleDecline = async (id: string) => {
+    setTransfers(prev => prev.filter(t => t.id !== id));
+    showToast('Đã từ chối và xóa tệp gửi đến.', 'info');
     try {
-      await updateDoc(doc(db, 'transfers', id), { status: 'declined' });
-      showToast('Đã từ chối tệp gửi đến.', 'info');
+      await deleteDoc(doc(db, 'transfers', id));
     } catch (err) {
       console.error('Decline transfer error:', err);
     }
@@ -173,9 +174,10 @@ export const ReceiveView: React.FC = () => {
 
   // Handle Delete Single
   const handleDelete = async (id: string) => {
+    setTransfers(prev => prev.filter(t => t.id !== id));
+    showToast('Đã xóa mục khỏi lịch sử nhận.', 'info');
     try {
       await deleteDoc(doc(db, 'transfers', id));
-      showToast('Đã xóa mục khỏi lịch sử nhận.', 'info');
     } catch (err) {
       console.error('Delete transfer error:', err);
     }
@@ -185,6 +187,7 @@ export const ReceiveView: React.FC = () => {
   const handleClearAllTransfers = async () => {
     if (!currentUser || transfers.length === 0) return;
     setIsClearingAll(true);
+    setTransfers([]);
     try {
       const batch = writeBatch(db);
       transfers.forEach((item) => {
@@ -212,9 +215,19 @@ export const ReceiveView: React.FC = () => {
 
   // Handle Download File Safely
   const handleDownloadFile = async (item: DirectTransfer) => {
-    const fileSource = item.fileUrl || item.fileData;
-    if (!fileSource) return;
-    const name = item.fileName || 'cloudsend-file';
+    let fileSource = item.fileUrl || item.fileData;
+    let name = item.fileName || 'cloudsend-file';
+
+    if (!fileSource && item.textContent) {
+      const textBlob = new Blob([item.textContent], { type: 'text/plain;charset=utf-8' });
+      fileSource = URL.createObjectURL(textBlob);
+      name = `Van_ban_${Date.now()}.txt`;
+    }
+
+    if (!fileSource) {
+      showToast('Không tìm thấy nguồn tệp tin để tải về.', 'error');
+      return;
+    }
 
     setDownloadingIds(prev => ({ ...prev, [item.id]: 'downloading' }));
     const success = await downloadFileSafely(fileSource, name);

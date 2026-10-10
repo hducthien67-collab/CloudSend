@@ -1089,29 +1089,18 @@ Quy định trả về JSON:
     next(err);
   });
 
-  // Vite middleware in development vs Static SPA in production / Cloud Run
+  // Vite middleware in development vs Static SPA in production
   const distPath = path.join(process.cwd(), 'dist');
   const distIndex = path.join(distPath, 'index.html');
-  const hasDist = fs.existsSync(distIndex);
-  const isCloudRun = Boolean(process.env.K_SERVICE || process.env.K_CONFIGURATION);
-  const isProduction = process.env.NODE_ENV === 'production' || isCloudRun || (hasDist && process.env.NODE_ENV !== 'development');
+  const isProduction = process.env.NODE_ENV === 'production' && fs.existsSync(distIndex);
 
   if (isProduction) {
-    if (fs.existsSync(distPath)) {
-      app.use(express.static(distPath));
-    }
+    app.use(express.static(distPath));
     app.get('*', (req, res, next) => {
       if (req.path.startsWith('/api')) {
         return next();
       }
-      if (fs.existsSync(distIndex)) {
-        return res.sendFile(distIndex);
-      }
-      const rootIndex = path.join(process.cwd(), 'index.html');
-      if (fs.existsSync(rootIndex)) {
-        return res.sendFile(rootIndex);
-      }
-      return res.status(200).send('<!doctype html><html><body><h1>CLSend Server Running</h1></body></html>');
+      return res.sendFile(distIndex);
     });
   } else {
     try {
@@ -1121,6 +1110,19 @@ Quy định trả về JSON:
         appType: 'spa',
       });
       app.use(vite.middlewares);
+      app.use('*', async (req, res, next) => {
+        if (req.path.startsWith('/api')) return next();
+        try {
+          const rootIndex = path.join(process.cwd(), 'index.html');
+          if (!fs.existsSync(rootIndex)) return next();
+          let template = fs.readFileSync(rootIndex, 'utf-8');
+          template = await vite.transformIndexHtml(req.originalUrl, template);
+          res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+        } catch (e) {
+          vite.ssrFixStacktrace(e as Error);
+          next(e);
+        }
+      });
     } catch (viteErr) {
       console.warn('Vite dev middleware failed to load, fallback to static serve:', viteErr);
       if (fs.existsSync(distPath)) {

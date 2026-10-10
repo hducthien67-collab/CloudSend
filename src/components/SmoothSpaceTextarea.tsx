@@ -113,54 +113,27 @@ export const SmoothSpaceTextarea: React.FC<SmoothSpaceTextareaProps> = ({
         </span>
       </div>
 
-      {/* THANH CON TRỎ XANH NHỎ GỌN & LƯỚT SIÊU NHANH (Fast & Sleek Animated Caret |) */}
-      <div
-        className="absolute pointer-events-none z-20"
-        style={{
-          left: 0,
-          top: 0,
-          transform: `translate3d(${caretPos.x}px, ${caretPos.y}px, 0)`,
-          transition: 'transform 0.055s cubic-bezier(0.1, 0.9, 0.2, 1)',
-          opacity: isFocused ? 1 : 0
-        }}
-      >
-        {/* Thanh con trỏ xanh dạ quang thanh mảnh, vừa vặn chuẩn kích thước chữ */}
-        <div
-          className={`w-[1.8px] h-[1.18em] bg-emerald-400 rounded-full shadow-[0_0_5px_#10b981,0_0_10px_rgba(16,185,129,0.7)] transition-transform duration-75 ${
-            isCaretMoving ? 'scale-y-110 shadow-[0_0_8px_#10b981]' : 'animate-smooth-caret'
-          }`}
-        />
-      </div>
-
-      {/* Ô Textarea thật: Nhập liệu chuẩn, con trỏ ẩn bằng caret-color: transparent */}
+      {/* Ô Textarea thật: Nhập liệu chuẩn và phản hồi tức thì */}
       <textarea
         ref={textareaRef}
         id={id}
         rows={rows}
         value={value}
         onChange={(e) => {
-          const newVal = e.target.value;
-          const selEnd = e.target.selectionEnd;
-          onChange(newVal);
-          calculatePosition(newVal, selEnd);
+          onChange(e.target.value);
         }}
         onFocus={() => {
           setIsFocused(true);
-          updateCaretPosition();
         }}
         onBlur={() => setIsFocused(false)}
-        onKeyDown={handleKeyDownInternal}
-        onKeyUp={(e) => calculatePosition(e.currentTarget.value, e.currentTarget.selectionEnd)}
-        onClick={(e) => calculatePosition(e.currentTarget.value, e.currentTarget.selectionEnd)}
-        onSelect={(e) => calculatePosition(e.currentTarget.value, e.currentTarget.selectionEnd)}
-        onScroll={() => updateCaretPosition()}
+        onKeyDown={onKeyDown}
         placeholder={placeholder}
         className="relative z-10 w-full p-4 pb-11 bg-transparent text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/40 font-mono leading-relaxed resize-none transition-colors selection:bg-emerald-500/30 selection:text-white"
         style={{
           boxSizing: 'border-box',
           wordBreak: 'break-word',
           overflowWrap: 'break-word',
-          caretColor: 'transparent'
+          caretColor: 'var(--theme-primary, #10b981)'
         }}
       />
     </div>

@@ -15,7 +15,8 @@ import {
   where, 
   limit, 
   serverTimestamp, 
-  deleteDoc 
+  deleteDoc,
+  writeBatch 
 } from 'firebase/firestore';
 import { ChatRoom, ChatMessage, ChatAttachment, RoomMember } from '../types';
 import { 
@@ -152,7 +153,6 @@ export const ChatRoomView: React.FC = () => {
   // Create / Join Room state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newRoomName, setNewRoomName] = useState('');
-  const [newRoomMode, setNewRoomMode] = useState<'public' | 'private'>('public');
   const [newRoomAvatar, setNewRoomAvatar] = useState<string>('');
   const [newRoomColor, setNewRoomColor] = useState<string>('#10b981');
   const [joinCodeInput, setJoinCodeInput] = useState('');
@@ -254,6 +254,32 @@ export const ChatRoomView: React.FC = () => {
       scrollToBottom(false);
     }, 60);
     return () => clearTimeout(timer);
+  }, [activeRoomId]);
+
+  // Auto clear Global Lounge messages every Monday morning
+  useEffect(() => {
+    if (activeRoomId !== 'public-relay-lounge') return;
+    const checkMondayClear = async () => {
+      const now = new Date();
+      if (now.getDay() === 1) { // Monday
+        const mondayKey = `global_lounge_monday_clear_${now.getFullYear()}_${now.getMonth()}_${now.getDate()}`;
+        if (!localStorage.getItem(mondayKey)) {
+          try {
+            const messagesRef = collection(db, 'rooms', 'public-relay-lounge', 'messages');
+            const snap = await getDocs(messagesRef);
+            if (!snap.empty) {
+              const batch = writeBatch(db);
+              snap.docs.forEach(d => batch.delete(d.ref));
+              await batch.commit();
+            }
+            localStorage.setItem(mondayKey, 'true');
+          } catch (err) {
+            console.warn('Monday auto clear error:', err);
+          }
+        }
+      }
+    };
+    checkMondayClear();
   }, [activeRoomId]);
 
   // Optimized scroll to bottom of messages
@@ -755,48 +781,32 @@ export const ChatRoomView: React.FC = () => {
     }
   };
 
-  // Process multiple incoming files (via file picker, drag drop, or paste)
+  // Process multiple incoming files (via file picker, drag drop, or paste) in parallel for high speed
   const processAndAttachFiles = async (fileList: FileList | File[]) => {
     const files = Array.from(fileList);
     if (files.length === 0) return;
 
-    // Cap at 10 items max at once
     const MAX_FILES = 10;
     const itemsToProcess = files.slice(0, MAX_FILES);
 
     setIsCompressing(true);
-    setUploadProgressText('Đang chuẩn bị tệp tin...');
+    setUploadProgressText('Đang đính kèm tệp tin...');
     try {
-      const newAttachments: ChatAttachment[] = [];
-      for (const file of itemsToProcess) {
-        if (isImageFile(file)) {
-          const processed = await compressImage(file);
-          // Content Moderation check for 18+ and extreme gore
-          if (processed.data) {
-            const modResult = await moderateUploadedImage(processed.data, file.name);
-            if (!modResult.safe) {
-              playShieldAlertSound();
-              setModerationWarning(
-                modResult.reason || 
-                `🚫 Ảnh "${file.name}" đã bị hủy do vi phạm tiêu chuẩn nghiêm cấm.`
-              );
-              setTimeout(() => setModerationWarning(null), 8000);
-              continue; // Skip this file immediately
-            }
+      const results = await Promise.all(
+        itemsToProcess.map(async (file) => {
+          if (isImageFile(file)) {
+            return await compressImage(file);
+          } else {
+            return await processGeneralFile(file);
           }
-          newAttachments.push(processed);
-        } else {
-          const processed = await processGeneralFile(file);
-          if (processed) {
-            newAttachments.push(processed);
-          }
-        }
-      }
+        })
+      );
+
+      const validAttachments = results.filter(Boolean) as ChatAttachment[];
 
       setAttachments((prev) => {
-        // Prevent duplicates by name and size
         const combined = [...prev];
-        for (const item of newAttachments) {
+        for (const item of validAttachments) {
           if (!combined.some(c => c.name === item.name && c.size === item.size)) {
             combined.push(item);
           }
@@ -808,6 +818,9 @@ export const ChatRoomView: React.FC = () => {
     } finally {
       setIsCompressing(false);
       setUploadProgressText(null);
+      setTimeout(() => {
+        richInputRef.current?.focus();
+      }, 50);
     }
   };
 
@@ -1048,13 +1061,7 @@ export const ChatRoomView: React.FC = () => {
     e.preventDefault();
     if (!currentUser || !newRoomName.trim()) return;
 
-    const isPrivate = newRoomMode === 'private';
-    const randomCode = isPrivate 
-      ? Math.random().toString(36).substring(2, 8).toUpperCase()
-      : 'PUBLIC';
     const roomId = `room-${Date.now()}`;
-
-    // Mark creator as Trưởng phòng (Owner)
     const isCreatorDev = isDevUser(currentUser.email);
     const creatorMember: RoomMember = {
       uid: currentUser.uid,
@@ -1071,8 +1078,8 @@ export const ChatRoomView: React.FC = () => {
       const roomPayload: ChatRoom = {
         id: roomId,
         name: newRoomName.trim(),
-        code: randomCode,
-        isPrivate: isPrivate,
+        code: 'GROUP',
+        isPrivate: false,
         createdBy: currentUser.uid,
         createdByName: userProfile?.displayName || 'Người dùng',
         ownerId: currentUser.uid,
@@ -1080,9 +1087,7 @@ export const ChatRoomView: React.FC = () => {
         avatar: newRoomAvatar || '',
         avatarColor: newRoomColor || '#10b981',
         createdAt: new Date().toISOString(),
-        description: isPrivate 
-          ? 'Phòng riêng tư (Nhập mã ID để vào)' 
-          : 'Phòng cộng đồng (Tự do tham gia không cần ID)',
+        description: 'Phòng nhóm chat',
         members: [creatorMember],
         membersCount: 1
       };
@@ -1091,7 +1096,6 @@ export const ChatRoomView: React.FC = () => {
       setActiveRoomId(roomId);
       setShowCreateModal(false);
       setNewRoomName('');
-      setNewRoomMode('public');
       setNewRoomAvatar('');
       setNewRoomColor('#10b981');
     } catch (err) {
@@ -2040,8 +2044,8 @@ export const ChatRoomView: React.FC = () => {
                     setTimeout(() => setFormatNotice(null), 2500);
                   }}
                   enterKeyMode={enterKeyMode}
-                  disabled={isCompressing}
-                  placeholder={isCompressing ? (uploadProgressText || "Đang tải & xử lý tệp tin...") : "Nhập tin nhắn... (Bôi đen & Ctrl+B để in đậm, Ctrl+I để in nghiêng, Enter gửi)"}
+                  disabled={false}
+                  placeholder="Nhập tin nhắn... (Bôi đen & Ctrl+B để in đậm, Ctrl+I để in nghiêng, Enter gửi)"
                   className="smooth-input"
                 />
               </div>
@@ -2192,62 +2196,7 @@ export const ChatRoomView: React.FC = () => {
                 />
               </div>
 
-              {/* Dòng 2: Chế độ Public và Private */}
-              <div className="space-y-2">
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                  Dòng 2: Chế độ phòng
-                </label>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {/* Option 1: Public */}
-                  <button
-                    type="button"
-                    onClick={() => setNewRoomMode('public')}
-                    className={`p-3 rounded-2xl border text-left transition-all flex flex-col gap-1.5 ${
-                      newRoomMode === 'public'
-                        ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-md shadow-emerald-500/10 ring-1 ring-emerald-500'
-                        : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 font-bold text-sm text-emerald-400">
-                        <Globe className="w-4 h-4" />
-                        <span>Công cộng</span>
-                      </div>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
-                        Public
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 leading-relaxed">
-                      Phòng chat cộng đồng. Ai cũng có thể thấy và vào tự do không cần mã ID.
-                    </p>
-                  </button>
-
-                  {/* Option 2: Private */}
-                  <button
-                    type="button"
-                    onClick={() => setNewRoomMode('private')}
-                    className={`p-3 rounded-2xl border text-left transition-all flex flex-col gap-1.5 ${
-                      newRoomMode === 'private'
-                        ? 'bg-amber-500/15 border-amber-500 text-white shadow-md shadow-amber-500/10 ring-1 ring-amber-500'
-                        : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 font-bold text-sm text-amber-400">
-                        <Lock className="w-4 h-4" />
-                        <span>Riêng tư</span>
-                      </div>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
-                        Private
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 leading-relaxed">
-                      Phòng có mã ID bảo mật. Khi người khác nhập trúng ID sẽ tự động là thành viên.
-                    </p>
-                  </button>
-                </div>
-              </div>
+              {/* Simplified room creation: no privacy toggles needed */}
 
               <div className="p-3 rounded-xl bg-slate-950/40 border border-slate-800/80 text-[11px] text-slate-400 flex items-center gap-2">
                 <Crown className="w-4 h-4 text-amber-400 shrink-0" />

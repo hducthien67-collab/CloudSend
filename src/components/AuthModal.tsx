@@ -313,6 +313,22 @@ export const AuthModal: React.FC = () => {
                   )}
                 </button>
 
+                {/* Unauthorized domain warning notice */}
+                {isUnauthorizedDomain && (
+                  <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs space-y-2 animate-in fade-in">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+                      <div className="font-semibold">Tên miền chưa được ủy quyền trong Firebase Auth</div>
+                    </div>
+                    <p className="text-amber-300/90 leading-relaxed">
+                      Google yêu cầu tên miền ứng dụng (<code className="bg-black/30 px-1 py-0.5 rounded font-mono text-[11px] text-amber-300">{window.location.hostname}</code>) phải được thêm vào danh sách <strong className="text-amber-200">Authorized domains</strong> trong Firebase Console &gt; Authentication &gt; Settings.
+                    </p>
+                    <p className="text-slate-300">
+                      Bạn có thể đăng nhập tức thì bằng <strong>Tên tài khoản / Mật khẩu</strong> hoặc <strong>Đăng nhập nhanh (Chế độ Khách)</strong> ngay bên dưới!
+                    </p>
+                  </div>
+                )}
+
                 {/* 2. Đăng nhập nhanh Chế độ Khách */}
                 <button
                   id="welcome-guest-btn"

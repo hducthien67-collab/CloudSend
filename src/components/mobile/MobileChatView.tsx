@@ -45,7 +45,9 @@ import {
   Check,
   Calendar,
   Zap,
-  History
+  History,
+  Clipboard,
+  AlertTriangle
 } from 'lucide-react';
 import { uploadFileToServer, isImageFile, generateImageThumbnail, createClientFallbackFileInfo } from '../../utils/fileUpload';
 import { downloadFileSafely } from '../../utils/fileDownload';
@@ -55,8 +57,11 @@ import { ReportMessageModal } from '../ReportMessageModal';
 import { RoomDetailsModal } from '../RoomDetailsModal';
 import { ZoomableImageViewerModal } from '../ZoomableImageViewerModal';
 import { ResetServerModal } from '../ResetServerModal';
-import { playSendSound, playReceiveSound } from '../../utils/sound';
+import { playSendSound, playReceiveSound, playShieldAlertSound } from '../../utils/sound';
 import { cleanFirestoreObject } from '../../utils/firestoreClean';
+import { censorProfanity, moderateUploadedImage } from '../../utils/moderation';
+import { inspectFileSecurity } from '../../utils/fileSecurity';
+import { checkContentWithAI } from '../../utils/aiModeration';
 import { 
   isDevUser, 
   formatGroupDateHeader, 
@@ -92,6 +97,7 @@ export const MobileChatView: React.FC = () => {
   const [inputText, setInputText] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadPercent, setUploadPercent] = useState<number | null>(null);
+  const [moderationWarning, setModerationWarning] = useState<string | null>(null);
   
   // Modals & Viewers
   const [showRoomDetails, setShowRoomDetails] = useState(false);
@@ -413,9 +419,38 @@ export const MobileChatView: React.FC = () => {
     const rawText = typeof textOverride === 'string' ? textOverride : inputText;
     if (!rawText.trim() || !currentUser || isUploading) return;
 
-    const textToSend = rawText.trim();
+    const rawTextOriginal = rawText.trim();
     // 1. Instant 0ms clear
     setInputText('');
+
+    // Moderate text: filter profanity
+    const profanityResult = censorProfanity(rawTextOriginal);
+    const sanitizedText = profanityResult.cleanText;
+    const hasProfanity = profanityResult.hasProfanity;
+    const detectedList = profanityResult.detectedList || [];
+
+    if (hasProfanity) {
+      playShieldAlertSound();
+      setModerationWarning(
+        `⚠️ Cảnh báo: Tin nhắn chứa từ ngữ vi phạm tiêu chuẩn cộng đồng ("${detectedList.join(', ')}"). Hệ thống đã tự động lọc dấu sao ***.`
+      );
+      setTimeout(() => setModerationWarning(null), 5000);
+    }
+
+    // Background AI safety audit (non-blocking)
+    if (sanitizedText && sanitizedText.length >= 2) {
+      checkContentWithAI(sanitizedText, currentUser?.email || undefined, currentUser?.uid)
+        .then(aiCheck => {
+          if (aiCheck?.isFlagged && (aiCheck.severity === 'high' || aiCheck.severity === 'critical')) {
+            playShieldAlertSound();
+            setModerationWarning(
+              `🚫 [AI Kiểm Duyệt] Cảnh báo vi phạm: ${aiCheck.message || aiCheck.matchedRule}. Nhắc nhở: "${aiCheck.remindText || 'Vui lòng tuân thủ nội quy'}"`
+            );
+            setTimeout(() => setModerationWarning(null), 7000);
+          }
+        })
+        .catch(() => {});
+    }
 
     const isDev = isDevUser(currentUser.email);
     const tempId = 'temp-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
@@ -430,7 +465,10 @@ export const MobileChatView: React.FC = () => {
       senderDevice: settings?.deviceName || 'Điện thoại',
       senderAvatar: userProfile?.customAvatarUrl || settings?.customAvatarUrl || currentUser?.photoURL || '',
       senderAvatarColor: userProfile?.avatarColor || settings?.avatarColor || '#10b981',
-      text: textToSend,
+      text: sanitizedText,
+      rawText: rawTextOriginal,
+      hasProfanity: hasProfanity,
+      detectedProfanity: detectedList,
       isDevMessage: isDev,
       createdAt: nowIso,
     };
@@ -452,7 +490,7 @@ export const MobileChatView: React.FC = () => {
       console.error('Send message error:', err);
       // Remove optimistic message if failed & restore text
       setRecentMessages(prev => prev.filter(m => m.id !== tempId));
-      setInputText(textToSend);
+      setInputText(rawTextOriginal);
     }
   };
 
@@ -464,12 +502,33 @@ export const MobileChatView: React.FC = () => {
 
     try {
       const file = fileList[0];
+
+      // 1. File Security inspection
+      const secCheck = inspectFileSecurity(file);
+      if (!secCheck.isSafe) {
+        playShieldAlertSound();
+        setModerationWarning(secCheck.error || `Tệp "${file.name}" không đáp ứng tiêu chuẩn an toàn.`);
+        setTimeout(() => setModerationWarning(null), 6000);
+        setIsUploading(false);
+        return;
+      }
+
       let fileUrl = '';
       let thumb: string | null = null;
 
       if (isImageFile(file)) {
         try {
           thumb = await generateImageThumbnail(file, 480, 0.75);
+          if (thumb) {
+            const imgMod = await moderateUploadedImage(thumb, file.name);
+            if (!imgMod.safe) {
+              playShieldAlertSound();
+              setModerationWarning(imgMod.reason || `🚫 Ảnh "${file.name}" đã bị hủy do vi phạm tiêu chuẩn.`);
+              setTimeout(() => setModerationWarning(null), 7000);
+              setIsUploading(false);
+              return;
+            }
+          }
         } catch {}
       }
 
@@ -519,6 +578,54 @@ export const MobileChatView: React.FC = () => {
       setUploadPercent(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
       if (cameraInputRef.current) cameraInputRef.current.value = '';
+    }
+  };
+
+  // Clipboard Paste Support on Mobile (Images and Text)
+  const handlePasteEvent = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const imageFiles: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        const file = items[i].getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      const dt = new DataTransfer();
+      imageFiles.forEach(f => dt.items.add(f));
+      handleSendMedia(dt.files);
+    }
+  };
+
+  const handlePasteFromClipboard = async () => {
+    try {
+      if (navigator.clipboard?.read) {
+        const clipboardItems = await navigator.clipboard.read();
+        for (const item of clipboardItems) {
+          for (const type of item.types) {
+            if (type.startsWith('image/')) {
+              const blob = await item.getType(type);
+              const ext = type.split('/')[1] || 'png';
+              const file = new File([blob], `clipboard_${Date.now()}.${ext}`, { type });
+              const dt = new DataTransfer();
+              dt.items.add(file);
+              handleSendMedia(dt.files);
+              return;
+            }
+          }
+        }
+      }
+      if (navigator.clipboard?.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          setInputText(prev => prev ? `${prev} ${text}` : text);
+        }
+      }
+    } catch (err) {
+      console.warn('Clipboard read error:', err);
     }
   };
 
@@ -1377,6 +1484,23 @@ export const MobileChatView: React.FC = () => {
         </div>
       )}
 
+      {/* Moderation Warning Toast/Banner (Roblox-styled cyan italic message box identical to desktop) */}
+      {moderationWarning && (
+        <div className="mx-2 mb-1 p-2 rounded-xl bg-[#020712] border border-[#1e3a5f] text-cyan-300 italic text-[11px] flex items-center justify-between gap-2 shadow-xl animate-in fade-in duration-150 z-20">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <AlertTriangle className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
+            <span className="font-sans italic text-cyan-300 leading-snug break-words">{moderationWarning}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setModerationWarning(null)}
+            className="p-1 rounded text-slate-400 hover:text-white shrink-0"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      )}
+
       {/* Sticky Bottom Input Bar - Ultra-compact */}
       <div
         className="p-1.5 bg-slate-900/95 border-t border-slate-800 flex items-center gap-1.5 shrink-0 z-20"
@@ -1402,11 +1526,22 @@ export const MobileChatView: React.FC = () => {
           <Paperclip className="w-3.5 h-3.5 text-sky-400" />
         </button>
 
+        {/* Clipboard Image Paste Button */}
+        <button
+          type="button"
+          onClick={handlePasteFromClipboard}
+          className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white active:scale-95 transition-all shrink-0"
+          title="Dán ảnh hoặc văn bản từ bộ nhớ tạm (Clipboard)"
+        >
+          <Clipboard className="w-3.5 h-3.5 text-amber-400" />
+        </button>
+
         {/* Text Input Field */}
         <input
           type="text"
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
+          onPaste={handlePasteEvent}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               if ((e.nativeEvent as any).isComposing) return;

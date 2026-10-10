@@ -19,7 +19,8 @@ import {
   Copy, 
   CheckCheck, 
   Eye, 
-  Trash2, 
+  Trash2,
+  X, 
   Smartphone, 
   Clock, 
   Sparkles, 
@@ -257,6 +258,18 @@ export const MobileReceiveView: React.FC = () => {
                           <Download className="w-3 h-3" />
                           <span>Tải về máy</span>
                         </button>
+
+                        {!isCompleted && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteTransfer(item.id)}
+                            className="py-1 px-2 rounded-lg bg-slate-800 hover:bg-rose-900/40 text-slate-300 hover:text-rose-300 border border-slate-700 font-semibold text-[10.5px] flex items-center justify-center gap-1 active:scale-95 transition-all"
+                            title="Từ chối và xóa tệp"
+                          >
+                            <X className="w-3 h-3 text-rose-400" />
+                            <span>Từ chối</span>
+                          </button>
+                        )}
 
                         {item.fileData?.startsWith('data:image') && (
                           <button

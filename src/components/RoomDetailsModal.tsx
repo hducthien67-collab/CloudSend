@@ -22,7 +22,8 @@ import {
   Eye,
   Info,
   Zap,
-  Server
+  Server,
+  Shield
 } from 'lucide-react';
 import { AVATAR_COLORS } from '../utils/device';
 import { isDevUser } from '../utils/devModeration';
@@ -81,6 +82,7 @@ export const RoomDetailsModal: React.FC<RoomDetailsModalProps> = ({
   }, [isOpen, room.id, room.name, room.description, room.avatarColor, room.avatar]);
 
   // Dissolve / Leave state
+  const isDissolvingRef = useRef(false);
   const [showDissolveModal, setShowDissolveModal] = useState(false);
   const [showResetServerModal, setShowResetServerModal] = useState(false);
   const [finalMessage, setFinalMessage] = useState('Cảm ơn mọi người đã cùng tham gia nhóm. Chúc các bạn luôn may mắn và thành công!');
@@ -88,17 +90,34 @@ export const RoomDetailsModal: React.FC<RoomDetailsModalProps> = ({
   const [copiedCode, setCopiedCode] = useState(false);
   const [viewingZoomImage, setViewingZoomImage] = useState<{ url: string; name?: string } | null>(null);
 
+  const handleCloseModal = () => {
+    setRoomName(room.name || '');
+    setRoomDesc(room.description || '');
+    setSelectedColor(room.avatarColor || '#10b981');
+    setCustomAvatar(room.avatar || '');
+    setSaveSuccess(false);
+    setAvatarSaveSuccess(false);
+    onClose();
+  };
+
   if (!isOpen) return null;
 
-  // Quyền kiểm soát phòng: Trưởng phòng, người tạo, DEV hoặc bất kỳ thành viên nào trong nhóm
-  // Theo chuẩn Discord & Zalo, các thành viên được phép đổi ảnh đại diện và màu sắc nhóm
-  const isOwner = room.ownerId === currentUserUid || 
-                  room.createdBy === currentUserUid ||
-                  room.createdByName === currentUserName ||
-                  (room.members || []).some(m => (m.uid === currentUserUid || m.deviceName === currentDeviceName) && m.role === 'owner');
+  // Quyền kiểm soát phòng: Chỉ đúng Trưởng phòng (Owner ID / Creator UID) hoặc DEV mới được đổi ảnh, màu sắc và chỉnh sửa phòng
+  const isOwner = Boolean(
+    currentUserUid && (
+      (room.ownerId && room.ownerId === currentUserUid) ||
+      (room.createdBy && room.createdBy === currentUserUid) ||
+      (room.members || []).some(m => m.uid === currentUserUid && m.role === 'owner')
+    )
+  );
   const isDev = isDevUser(currentUserEmail);
-  const isMember = (room.members || []).some(m => m.uid === currentUserUid || m.deviceName === currentDeviceName);
-  const canEditRoom = isOwner || isDev || isMember || !room.ownerId || room.id !== 'public-relay-lounge';
+  const canEditRoom = (isOwner || isDev) && room.id !== 'public-relay-lounge';
+  const hasUnsavedChanges = canEditRoom && (
+    roomName !== (room.name || '') ||
+    roomDesc !== (room.description || '') ||
+    selectedColor !== (room.avatarColor || '#10b981') ||
+    customAvatar !== (room.avatar || '')
+  );
 
   // Extract all images ever sent in this room from messages
   const allImages: { url: string; name: string; sender: string; time: string }[] = [];
@@ -171,8 +190,9 @@ export const RoomDetailsModal: React.FC<RoomDetailsModalProps> = ({
     });
   };
 
-  // Upload và tự động lưu ảnh đại diện phòng ngay lập tức vào Firestore
+  // Tải ảnh đại diện và lưu vào bộ nhớ tạm (chỉ lưu Firestore khi nhấn 'Lưu cấu trúc phòng')
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canEditRoom) return;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -182,61 +202,32 @@ export const RoomDetailsModal: React.FC<RoomDetailsModalProps> = ({
     }
 
     try {
-      setIsSaving(true);
       const compressedDataUrl = await compressImage(file);
       setCustomAvatar(compressedDataUrl);
-
-      // Lưu ngay vào Firestore
-      await setDoc(doc(db, 'rooms', room.id), {
-        avatar: compressedDataUrl,
-        avatarColor: selectedColor,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-
       setAvatarSaveSuccess(true);
       setTimeout(() => setAvatarSaveSuccess(false), 2500);
     } catch (err) {
       console.error('Update avatar error:', err);
-      alert('Có lỗi khi tải và cập nhật ảnh đại diện nhóm.');
+      alert('Có lỗi khi xử lý ảnh đại diện nhóm.');
     } finally {
-      setIsSaving(false);
-      // Reset input value to allow selecting same file again
       if (e.target) e.target.value = '';
     }
   };
 
-  // Đổi màu sắc nhóm và lưu ngay vào Firestore
-  const handleColorChange = async (color: string) => {
+  // Đổi màu sắc nhóm vào bộ nhớ tạm (chỉ lưu Firestore khi nhấn 'Lưu cấu trúc phòng')
+  const handleColorChange = (color: string) => {
+    if (!canEditRoom) return;
     setSelectedColor(color);
-    try {
-      await setDoc(doc(db, 'rooms', room.id), {
-        avatarColor: color,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-      setAvatarSaveSuccess(true);
-      setTimeout(() => setAvatarSaveSuccess(false), 2000);
-    } catch (err) {
-      console.warn('Auto save color warning:', err);
-    }
+    setAvatarSaveSuccess(true);
+    setTimeout(() => setAvatarSaveSuccess(false), 2000);
   };
 
   // Xóa ảnh đại diện tùy chỉnh (quay về chữ cái hoặc icon)
-  const handleRemoveAvatar = async () => {
+  const handleRemoveAvatar = () => {
+    if (!canEditRoom) return;
     setCustomAvatar('');
-    try {
-      setIsSaving(true);
-      await setDoc(doc(db, 'rooms', room.id), {
-        avatar: '',
-        avatarColor: selectedColor,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-      setAvatarSaveSuccess(true);
-      setTimeout(() => setAvatarSaveSuccess(false), 2000);
-    } catch (err) {
-      console.error('Remove avatar error:', err);
-    } finally {
-      setIsSaving(false);
-    }
+    setAvatarSaveSuccess(true);
+    setTimeout(() => setAvatarSaveSuccess(false), 2000);
   };
 
   // Save room info (name, desc, avatar, color)
@@ -282,17 +273,28 @@ export const RoomDetailsModal: React.FC<RoomDetailsModalProps> = ({
 
   // Owner dissolves the room with final parting message sent to all members' Receive tabs
   const handleDissolveRoom = async () => {
-    if (!isOwner) return;
+    if (!isOwner || isDissolvingRef.current) return;
+    isDissolvingRef.current = true;
     setIsDeleting(true);
 
     try {
       const nowIso = new Date().toISOString();
       const messageText = finalMessage.trim() || 'Phòng chat đã được Trưởng phòng giải tán.';
 
-      // Send the parting notification to the Receive tab (transfers) of each member
-      const notifyPromises = membersList.map(async (member) => {
+      // Send the parting notification to the Receive tab (transfers) of each UNIQUE member (excluding the owner)
+      const seenUids = new Set<string>();
+      const recipients = membersList.filter((member) => {
+        if (!member.uid || member.uid === currentUserUid) return false;
+        if (seenUids.has(member.uid)) return false;
+        seenUids.add(member.uid);
+        return true;
+      });
+
+      const notifyPromises = recipients.map(async (member) => {
         try {
-          await addDoc(collection(db, 'transfers'), cleanFirestoreObject({
+          const notifId = `dissolve_${room.id}_${member.uid}`;
+          await setDoc(doc(db, 'transfers', notifId), cleanFirestoreObject({
+            id: notifId,
             senderId: currentUserUid,
             senderName: `[Trưởng phòng] ${currentUserName}`,
             senderDevice: currentDeviceName,
@@ -301,7 +303,7 @@ export const RoomDetailsModal: React.FC<RoomDetailsModalProps> = ({
             textContent: `📢 [THÔNG BÁO GIẢI TÁN PHÒNG: "${room.name}"]\n\n"${messageText}"\n\n— Trưởng phòng ${currentUserName} đã chính thức giải tán phòng chat vào lúc ${new Date().toLocaleTimeString('vi-VN')} ngày ${new Date().toLocaleDateString('vi-VN')}.`,
             status: 'completed',
             createdAt: nowIso,
-          }));
+          }), { merge: true });
         } catch (err) {
           console.warn('Failed to notify member:', member.uid, err);
         }
@@ -314,11 +316,12 @@ export const RoomDetailsModal: React.FC<RoomDetailsModalProps> = ({
 
       setShowDissolveModal(false);
       onRoomDeleted();
-      onClose();
+      handleCloseModal();
     } catch (err) {
       console.error('Dissolve room error:', err);
       alert('Không thể giải tán phòng vào lúc này.');
     } finally {
+      isDissolvingRef.current = false;
       setIsDeleting(false);
     }
   };
@@ -345,12 +348,16 @@ export const RoomDetailsModal: React.FC<RoomDetailsModalProps> = ({
             />
 
             <div className="flex items-center gap-2.5 min-w-0">
-              {/* Clickable Header Avatar with Camera Overlay (Like Discord/Zalo) */}
+              {/* Header Avatar: Only owner/DEV can click to change */}
               <div 
-                className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-md shrink-0 border border-white/10 overflow-hidden relative group cursor-pointer"
+                className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-md shrink-0 border border-white/10 overflow-hidden relative group ${
+                  canEditRoom ? 'cursor-pointer' : 'cursor-default'
+                }`}
                 style={{ backgroundColor: selectedColor }}
-                onClick={() => fileInputRef.current?.click()}
-                title="Bấm để đổi ảnh đại diện nhóm ngay"
+                onClick={() => {
+                  if (canEditRoom) fileInputRef.current?.click();
+                }}
+                title={canEditRoom ? "Bấm để đổi ảnh đại diện nhóm (Chỉ Trưởng phòng)" : "Ảnh đại diện nhóm"}
               >
                 {customAvatar ? (
                   <img src={customAvatar} alt="Room" className="w-full h-full object-cover" />
@@ -359,11 +366,13 @@ export const RoomDetailsModal: React.FC<RoomDetailsModalProps> = ({
                 ) : (
                   (roomName || room.name || 'R').charAt(0).toUpperCase()
                 )}
-                {/* Camera Hover Overlay */}
-                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-opacity text-white">
-                  <Camera className="w-3.5 h-3.5 text-emerald-300" />
-                  <span className="text-[7.5px] font-bold">Đổi ảnh</span>
-                </div>
+                {/* Camera Hover Overlay (Only visible to Owner/DEV) */}
+                {canEditRoom && (
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-opacity text-white">
+                    <Camera className="w-3.5 h-3.5 text-emerald-300" />
+                    <span className="text-[7.5px] font-bold">Đổi ảnh</span>
+                  </div>
+                )}
               </div>
 
               <div className="min-w-0">
@@ -396,7 +405,7 @@ export const RoomDetailsModal: React.FC<RoomDetailsModalProps> = ({
 
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleCloseModal}
               className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
             >
               <X className="w-4 h-4" />
@@ -448,179 +457,222 @@ export const RoomDetailsModal: React.FC<RoomDetailsModalProps> = ({
             {/* TAB 1: Cấu trúc phòng & Ảnh đại diện */}
             {activeTab === 'info' && (
               <div className="space-y-3">
-                <form onSubmit={handleSaveInfo} className="space-y-3">
-                  {/* 1. Ảnh đại diện nhóm & Đổi ảnh trực tiếp */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
-                        1. Ảnh đại diện phòng chat
-                      </label>
-                      {avatarSaveSuccess && (
-                        <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1 animate-pulse">
-                          <Check className="w-3 h-3" /> Đã đổi ảnh thành công!
-                        </span>
-                      )}
-                    </div>
-
-                    <div 
-                      className={`flex items-center gap-3 p-2.5 rounded-xl bg-slate-950/60 border transition-all ${
-                        isDraggingAvatar ? 'border-emerald-500 ring-2 ring-emerald-500/40 bg-emerald-950/30' : 'border-slate-800'
-                      }`}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setIsDraggingAvatar(true);
-                      }}
-                      onDragLeave={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setIsDraggingAvatar(false);
-                      }}
-                      onDrop={async (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setIsDraggingAvatar(false);
-                        const files = e.dataTransfer.files;
-                        if (files && files.length > 0 && files[0].type.startsWith('image/')) {
-                          try {
-                            setIsSaving(true);
-                            const compressedDataUrl = await compressImage(files[0]);
-                            setCustomAvatar(compressedDataUrl);
-                            await setDoc(doc(db, 'rooms', room.id), {
-                              avatar: compressedDataUrl,
-                              avatarColor: selectedColor,
-                              updatedAt: new Date().toISOString()
-                            }, { merge: true });
-                            setAvatarSaveSuccess(true);
-                            setTimeout(() => setAvatarSaveSuccess(false), 2500);
-                          } catch (err) {
-                            console.error('Error drop avatar:', err);
-                          } finally {
-                            setIsSaving(false);
-                          }
-                        }
-                      }}
-                    >
-                      {/* Large Avatar preview with click-to-zoom or click-to-change */}
+                {!canEditRoom ? (
+                  <div className="space-y-3">
+                    <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center gap-3">
                       <div 
-                        className="w-13 h-13 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-md shrink-0 border border-white/10 overflow-hidden relative group cursor-pointer"
+                        className="w-14 h-14 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-md shrink-0 border border-white/10 overflow-hidden"
                         style={{ backgroundColor: selectedColor }}
-                        onClick={() => {
-                          if (customAvatar) {
-                            setViewingZoomImage({ url: customAvatar, name: `Ảnh đại diện phòng ${roomName}` });
-                          } else {
-                            fileInputRef.current?.click();
-                          }
-                        }}
-                        title={customAvatar ? 'Bấm để phóng to xem ảnh' : 'Bấm để tải ảnh lên'}
                       >
                         {customAvatar ? (
-                          <img src={customAvatar} alt="Room" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                          <img src={customAvatar} alt="Room" className="w-full h-full object-cover" />
                         ) : room.id === 'public-relay-lounge' ? (
                           <Globe className="w-6 h-6 text-emerald-200" />
                         ) : (
                           (roomName || room.name || 'R').charAt(0).toUpperCase()
                         )}
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                          <Eye className="w-4 h-4 text-white" />
-                        </div>
                       </div>
-
-                      <div className="flex-1 min-w-0 space-y-1.5">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <button
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            className="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-[11px] font-semibold text-emerald-300 border border-emerald-500/40 flex items-center gap-1 transition-colors cursor-pointer active:scale-95 shadow-xs"
-                          >
-                            <Camera className="w-3 h-3 text-emerald-400" />
-                            <span>{customAvatar ? 'Đổi ảnh khác' : 'Tải ảnh lên'}</span>
-                          </button>
-                          {customAvatar && (
-                            <button
-                              type="button"
-                              onClick={handleRemoveAvatar}
-                              className="px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-medium transition-colors cursor-pointer"
-                            >
-                              Xóa ảnh
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Color Palette */}
-                        <div className="flex items-center gap-1 flex-wrap">
-                          <span className="text-[10px] text-slate-400 mr-0.5">Màu nền:</span>
-                          {AVATAR_COLORS.map((col) => (
-                            <button
-                              key={col}
-                              type="button"
-                              onClick={() => handleColorChange(col)}
-                              className={`w-5 h-5 rounded-full transition-transform cursor-pointer ${
-                                selectedColor === col ? 'scale-110 ring-2 ring-white' : 'hover:scale-105 opacity-80 hover:opacity-100'
-                              }`}
-                              style={{ backgroundColor: col }}
-                              title={`Chọn màu ${col}`}
-                            />
-                          ))}
-                        </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-sm font-bold text-white truncate">{room.name}</h3>
+                        <p className="text-xs text-slate-400 mt-0.5 line-clamp-2">
+                          {room.description || 'Chưa có mô tả cho nhóm chat này.'}
+                        </p>
                       </div>
                     </div>
-                    <p className="text-[10px] text-slate-500 italic">
-                      💡 Mẹo: Bạn có thể kéo thả ảnh trực tiếp vào ô trên hoặc nhấp vào ảnh ở góc trên cùng để đổi ảnh nhanh.
-                    </p>
-                  </div>
 
-                  {/* 2. Tên của nhóm */}
-                  <div className="space-y-1">
-                    <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
-                      2. Tên của nhóm
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={roomName}
-                      onChange={(e) => setRoomName(e.target.value)}
-                      placeholder="Nhập tên phòng..."
-                      className="w-full px-3 py-1.5 bg-slate-950/60 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 transition-colors"
-                    />
+                    <div className="p-2.5 rounded-xl bg-slate-950/40 border border-slate-800/80 text-[11px] text-slate-400 flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>Chỉ <strong>Trưởng phòng</strong> mới có quyền chỉnh sửa tên, ảnh đại diện và màu sắc nhóm.</span>
+                    </div>
                   </div>
+                ) : (
+                  <form onSubmit={handleSaveInfo} className="space-y-3">
+                    {/* 1. Ảnh đại diện nhóm & Đổi ảnh trực tiếp */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
+                          1. Ảnh đại diện phòng chat
+                        </label>
+                        {avatarSaveSuccess && (
+                          <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1 animate-pulse">
+                            <Check className="w-3 h-3" /> Đã chọn ảnh! Nhấn 'Lưu' bên dưới để áp dụng
+                          </span>
+                        )}
+                      </div>
 
-                  {/* 3. Mô tả phòng */}
-                  <div className="space-y-1">
-                    <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
-                      3. Mô tả phòng
-                    </label>
-                    <input
-                      type="text"
-                      value={roomDesc}
-                      onChange={(e) => setRoomDesc(e.target.value)}
-                      placeholder="Mô tả mục đích nhóm chat..."
-                      className="w-full px-3 py-1.5 bg-slate-950/60 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 transition-colors"
-                    />
-                  </div>
-
-                  {/* Save button */}
-                  <div className="flex items-center justify-between pt-1">
-                    {saveSuccess && (
-                      <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
-                        <Check className="w-3.5 h-3.5" /> Đã lưu cấu trúc phòng thành công!
-                      </span>
-                    )}
-                    <div className="ml-auto">
-                      <button
-                        type="submit"
-                        disabled={isSaving}
-                        className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-semibold text-xs shadow-md shadow-emerald-600/20 transition-colors cursor-pointer"
+                      <div 
+                        className={`flex items-center gap-3 p-2.5 rounded-xl bg-slate-950/60 border transition-all ${
+                          isDraggingAvatar ? 'border-emerald-500 ring-2 ring-emerald-500/40 bg-emerald-950/30' : 'border-slate-800'
+                        }`}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setIsDraggingAvatar(true);
+                        }}
+                        onDragLeave={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setIsDraggingAvatar(false);
+                        }}
+                        onDrop={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setIsDraggingAvatar(false);
+                          const files = e.dataTransfer.files;
+                          if (files && files.length > 0 && files[0].type.startsWith('image/')) {
+                            try {
+                              const compressedDataUrl = await compressImage(files[0]);
+                              setCustomAvatar(compressedDataUrl);
+                              setAvatarSaveSuccess(true);
+                              setTimeout(() => setAvatarSaveSuccess(false), 2500);
+                            } catch (err) {
+                              console.error('Error drop avatar:', err);
+                            }
+                          }
+                        }}
                       >
-                        {isSaving ? 'Đang lưu...' : 'Lưu cấu trúc phòng'}
-                      </button>
+                        {/* Large Avatar preview with click-to-zoom or click-to-change */}
+                        <div 
+                          className="w-13 h-13 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-md shrink-0 border border-white/10 overflow-hidden relative group cursor-pointer"
+                          style={{ backgroundColor: selectedColor }}
+                          onClick={() => {
+                            if (customAvatar) {
+                              setViewingZoomImage({ url: customAvatar, name: `Ảnh đại diện phòng ${roomName}` });
+                            } else {
+                              fileInputRef.current?.click();
+                            }
+                          }}
+                          title={customAvatar ? 'Bấm để phóng to xem ảnh' : 'Bấm để tải ảnh lên'}
+                        >
+                          {customAvatar ? (
+                            <img src={customAvatar} alt="Room" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                          ) : room.id === 'public-relay-lounge' ? (
+                            <Globe className="w-6 h-6 text-emerald-200" />
+                          ) : (
+                            (roomName || room.name || 'R').charAt(0).toUpperCase()
+                          )}
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                            <Eye className="w-4 h-4 text-white" />
+                          </div>
+                        </div>
+
+                        <div className="flex-1 min-w-0 space-y-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => fileInputRef.current?.click()}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-[11px] font-semibold text-emerald-300 border border-emerald-500/40 flex items-center gap-1 transition-colors cursor-pointer active:scale-95 shadow-xs"
+                            >
+                              <Camera className="w-3 h-3 text-emerald-400" />
+                              <span>{customAvatar ? 'Đổi ảnh khác' : 'Tải ảnh lên'}</span>
+                            </button>
+                            {customAvatar && (
+                              <button
+                                type="button"
+                                onClick={handleRemoveAvatar}
+                                className="px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-medium transition-colors cursor-pointer"
+                              >
+                                Xóa ảnh
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Color Palette */}
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <span className="text-[10px] text-slate-400 mr-0.5">Màu nền:</span>
+                            {AVATAR_COLORS.map((col) => (
+                              <button
+                                key={col}
+                                type="button"
+                                onClick={() => handleColorChange(col)}
+                                className={`w-5 h-5 rounded-full transition-transform cursor-pointer ${
+                                  selectedColor === col ? 'scale-110 ring-2 ring-white' : 'hover:scale-105 opacity-80 hover:opacity-100'
+                                }`}
+                                style={{ backgroundColor: col }}
+                                title={`Chọn màu ${col}`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-slate-500 italic">
+                        💡 Mẹo: Bạn có thể kéo thả ảnh trực tiếp vào ô trên. Sau khi chọn ảnh, nhấn "Lưu cấu trúc phòng" để cập nhật.
+                      </p>
                     </div>
-                  </div>
-                </form>
+
+                    {/* 2. Tên của nhóm */}
+                    <div className="space-y-1">
+                      <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
+                        2. Tên của nhóm
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={roomName}
+                        onChange={(e) => setRoomName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') e.preventDefault();
+                        }}
+                        placeholder="Nhập tên phòng..."
+                        className="w-full px-3 py-1.5 bg-slate-950/60 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 transition-colors"
+                      />
+                    </div>
+
+                    {/* 3. Mô tả phòng */}
+                    <div className="space-y-1">
+                      <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
+                        3. Mô tả phòng
+                      </label>
+                      <input
+                        type="text"
+                        value={roomDesc}
+                        onChange={(e) => setRoomDesc(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') e.preventDefault();
+                        }}
+                        placeholder="Mô tả mục đích nhóm chat..."
+                        className="w-full px-3 py-1.5 bg-slate-950/60 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 transition-colors"
+                      />
+                    </div>
+
+                    {/* Save button */}
+                    <div className="flex items-center justify-between pt-1">
+                      {saveSuccess ? (
+                        <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
+                          <Check className="w-3.5 h-3.5" /> Đã lưu cấu trúc phòng thành công!
+                        </span>
+                      ) : hasUnsavedChanges ? (
+                        <span className="text-[10px] text-amber-400 font-medium flex items-center gap-1">
+                          ⚠️ Có thay đổi chưa lưu
+                        </span>
+                      ) : (
+                        <span />
+                      )}
+                      <div className="ml-auto">
+                        <button
+                          type="submit"
+                          disabled={isSaving}
+                          className={`px-4 py-1.5 rounded-lg text-white font-semibold text-xs shadow-md transition-all cursor-pointer ${
+                            hasUnsavedChanges
+                              ? 'bg-emerald-600 hover:bg-emerald-500 ring-2 ring-emerald-400/50 shadow-emerald-600/30 font-bold'
+                              : 'bg-emerald-600/80 hover:bg-emerald-600 disabled:opacity-50'
+                          }`}
+                        >
+                          {isSaving ? 'Đang lưu...' : hasUnsavedChanges ? '💾 Lưu cấu trúc phòng' : 'Lưu cấu trúc phòng'}
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                )}
 
                 {/* Hành động rời phòng hoặc giải tán phòng */}
                 <div className="pt-2 border-t border-slate-800/80 space-y-2">
-                  {isOwner || isDev ? (
+                  {room.id === 'public-relay-lounge' ? (
+                    <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>Đại Sảnh Toàn Cầu là phòng hệ thống mặc định, được bảo vệ vĩnh viễn và không thể xóa.</span>
+                    </div>
+                  ) : isOwner || isDev ? (
                     <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <h4 className="text-xs font-bold text-rose-300 flex items-center gap-1">

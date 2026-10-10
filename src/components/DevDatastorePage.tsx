@@ -1167,25 +1167,11 @@ export const DevDatastorePage: React.FC<DevDatastorePageProps> = ({ onBackToApp 
     }
   };
 
-  // Xử lý phím Enter 2 lần / Backspace cho thông báo riêng theo đúng yêu cầu:
-  // - Nếu lần một thì sẽ xuống dòng,
-  // - Nếu viết tiếp thì sẽ reset cái Enter từ 1 thành 0,
-  // - Nếu nhấn Enter lần một rồi nhấn thêm lần nữa thì sẽ được gửi đi,
-  // - Nếu có nhấn nút Backspace thì cũng không sao vẫn nhấn Enter lần 2 được!
+  // Xử lý phím Enter gửi thông báo trực tiếp (Shift+Enter xuống dòng)
   const handlePrivateMsgKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter') {
-      if (consecutiveEnterCountRef.current === 1) {
-        e.preventDefault();
-        consecutiveEnterCountRef.current = 0;
-        handleSendPrivateNotification();
-      } else {
-        consecutiveEnterCountRef.current = 1;
-      }
-    } else if (e.key === 'Backspace') {
-      // Nhấn Backspace: không reset consecutiveEnterCountRef để vẫn nhấn Enter lần 2 được
-    } else {
-      // Viết tiếp: reset bộ đếm về 0
-      consecutiveEnterCountRef.current = 0;
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendPrivateNotification();
     }
   };
 
@@ -3670,7 +3656,7 @@ export const DevDatastorePage: React.FC<DevDatastorePageProps> = ({ onBackToApp 
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-semibold text-slate-300">Nội dung tin thông báo riêng:</span>
                   <span className="text-[11px] text-slate-400 font-mono">
-                    💡 Nhấn <strong>Enter 2 lần</strong> hoặc nút Gửi để phát thông báo (Hỗ trợ Backspace)
+                    💡 Nhấn <strong>Enter</strong> để gửi thông báo (Shift+Enter để xuống dòng)
                   </span>
                 </div>
 

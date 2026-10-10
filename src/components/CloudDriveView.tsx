@@ -9,7 +9,9 @@ import {
   setDoc,
   deleteDoc,
   doc,
-  updateDoc
+  updateDoc,
+  addDoc,
+  serverTimestamp
 } from 'firebase/firestore';
 import { CloudDriveFile } from '../types';
 import {
@@ -34,7 +36,8 @@ import {
   Copy,
   Edit2,
   Filter,
-  X
+  X,
+  Link as LinkIcon
 } from 'lucide-react';
 import { uploadFileToServer, isImageFile, generateImageThumbnail, createClientFallbackFileInfo } from '../utils/fileUpload';
 import { FileDocIcon, getDocumentTypeInfo } from './FileDocIcon';
@@ -56,6 +59,48 @@ export const CloudDriveView: React.FC = () => {
   const [editFileName, setEditFileName] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Cloud URL Modal states
+  const [isCloudUrlModalOpen, setIsCloudUrlModalOpen] = useState(false);
+  const [cloudUrlModalValue, setCloudUrlModalValue] = useState('');
+
+  const handleCloudUrlAdded = async () => {
+    const finalUrl = cloudUrlModalValue.trim();
+    if (!finalUrl) return;
+    let validUrl = finalUrl;
+    if (!validUrl.startsWith('http://') && !validUrl.startsWith('https://')) {
+      validUrl = 'https://' + validUrl;
+    }
+    try {
+      const urlObj = new URL(validUrl);
+      const pathname = urlObj.pathname;
+      const segments = pathname.split('/').filter(Boolean);
+      const rawName = segments[segments.length - 1] || urlObj.hostname;
+      const decodedName = decodeURIComponent(rawName);
+      const fileName = decodedName.includes('.') ? decodedName : `${urlObj.hostname}_link`;
+      const isImage = /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i.test(validUrl);
+
+      setUploading(true);
+      const newFileDoc = {
+        userId: currentUser?.uid,
+        name: fileName,
+        size: 0,
+        type: isImage ? 'image/jpeg' : 'text/uri-list',
+        url: validUrl,
+        viewUrl: validUrl,
+        thumbnail: isImage ? validUrl : null,
+        createdAt: serverTimestamp(),
+      };
+      await addDoc(collection(db, 'cloud_files'), newFileDoc);
+      setCloudUrlModalValue('');
+      setIsCloudUrlModalOpen(false);
+      setUploading(false);
+      showBottomToast(`🔗 Đã lưu URL "${fileName}" vào Cloud Drive thành công!`);
+    } catch (err) {
+      setUploading(false);
+      showBottomToast('⚠️ Không thể thêm URL này. Vui lòng kiểm tra lại định dạng.', true);
+    }
+  };
 
   // Custom in-app delete modal states (bảng xác nhận xóa tùy chỉnh trong web)
   const [filePendingDelete, setFilePendingDelete] = useState<CloudDriveFile | null>(null);
@@ -418,7 +463,8 @@ export const CloudDriveView: React.FC = () => {
   });
 
   return (
-    <div className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+    <>
+      <div className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6">
       {/* Top Banner & Storage Bar */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl relative overflow-hidden backdrop-blur-sm">
         <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -470,6 +516,16 @@ export const CloudDriveView: React.FC = () => {
                   <span>Tải tệp lên Cloud</span>
                 </>
               )}
+            </button>
+            <button
+              id="upload-url-to-cloud-btn"
+              type="button"
+              disabled={uploading}
+              onClick={() => setIsCloudUrlModalOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-indigo-300 border border-indigo-500/40 font-bold text-sm shadow-lg flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
+            >
+              <LinkIcon className="w-4 h-4 text-indigo-400" />
+              <span>Thêm URL</span>
             </button>
           </div>
         </div>
@@ -1107,5 +1163,70 @@ export const CloudDriveView: React.FC = () => {
         </div>
       )}
     </div>
+
+      {/* Cloud URL Modal */}
+      {isCloudUrlModalOpen && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-[2px] animate-in fade-in duration-150 touch-none overscroll-none"
+          onClick={() => setIsCloudUrlModalOpen(false)}
+        >
+          <div 
+            className="bg-[#181e29] border border-slate-700/80 rounded-2xl sm:rounded-3xl p-4 sm:p-6 w-full max-w-sm sm:max-w-md shadow-2xl space-y-3.5 text-left animate-in zoom-in-95 duration-150 my-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm sm:text-base font-bold text-white tracking-wide flex items-center gap-2">
+                <LinkIcon className="w-4 h-4 text-indigo-400" />
+                <span>Thêm tệp từ URL vào Cloud</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsCloudUrlModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/80 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-300">
+              Nhập hoặc dán URL (hình ảnh, tài liệu, video hoặc liên kết) để lưu trực tiếp vào Cloud Drive của bạn:
+            </p>
+            <div className="rounded-xl overflow-hidden bg-[#242b3b] border border-slate-700/70 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-400/20 transition-all p-2.5">
+              <input
+                type="url"
+                value={cloudUrlModalValue}
+                onChange={(e) => setCloudUrlModalValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleCloudUrlAdded();
+                  }
+                }}
+                placeholder="https://example.com/image.jpg"
+                className="w-full bg-transparent text-white text-xs sm:text-sm focus:outline-none placeholder:text-slate-500 font-mono"
+                autoFocus
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setIsCloudUrlModalOpen(false)}
+                className="px-3.5 py-1.5 text-xs sm:text-sm font-medium text-slate-300 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-slate-800"
+              >
+                Thoát
+              </button>
+              <button
+                type="button"
+                onClick={handleCloudUrlAdded}
+                disabled={uploading}
+                className="px-5 py-1.5 rounded-full bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs sm:text-sm font-bold shadow-md transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {uploading ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : <LinkIcon className="w-3.5 h-3.5" />}
+                <span>Lưu vào Cloud</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };

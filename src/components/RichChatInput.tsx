@@ -425,24 +425,6 @@ export const RichChatInput = forwardRef<RichChatInputHandle, RichChatInputProps>
         </div>
       )}
 
-      {/* THANH CON TRỎ XANH NHỎ GỌN & LƯỚT CHUYỂN ĐỘNG SIÊU MƯỢT (Gliding Neon Caret |) */}
-      <div
-        className="absolute pointer-events-none z-20"
-        style={{
-          left: 0,
-          top: 0,
-          transform: `translate3d(${caretPos.x}px, ${caretPos.y}px, 0)`,
-          transition: 'transform 0.055s cubic-bezier(0.1, 0.9, 0.2, 1)',
-          opacity: isFocused ? 1 : 0
-        }}
-      >
-        <div
-          className={`w-[1.8px] h-[1.18em] bg-emerald-400 rounded-full shadow-[0_0_5px_#10b981,0_0_10px_rgba(16,185,129,0.7)] transition-transform duration-75 ${
-            isCaretMoving ? 'scale-y-110 shadow-[0_0_8px_#10b981]' : 'animate-smooth-caret'
-          }`}
-        />
-      </div>
-
       {/* Ô gõ tin nhắn trực tiếp WYSIWYG: Bôi đen & Ctrl+B ra chữ đậm thật, Ctrl+I ra chữ nghiêng thật */}
       <div
         ref={editorRef}
@@ -454,28 +436,22 @@ export const RichChatInput = forwardRef<RichChatInputHandle, RichChatInputProps>
         onInput={() => {
           syncValue();
           checkSelection();
-          updateCaretPosition();
         }}
         onKeyDown={handleKeyDown}
         onKeyUp={() => {
           checkSelection();
-          updateCaretPosition();
         }}
         onMouseUp={() => {
           checkSelection();
-          updateCaretPosition();
         }}
         onSelect={() => {
           checkSelection();
-          updateCaretPosition();
         }}
         onClick={() => {
           checkSelection();
-          updateCaretPosition();
         }}
         onFocus={() => {
           setIsFocused(true);
-          updateCaretPosition();
         }}
         onBlur={() => {
           setIsFocused(false);
@@ -484,7 +460,7 @@ export const RichChatInput = forwardRef<RichChatInputHandle, RichChatInputProps>
         onPaste={handlePaste}
         className="relative z-10 w-full px-4 py-2.5 min-h-[44px] max-h-32 overflow-y-auto scrollbar-thin text-sm text-white focus:outline-none font-sans leading-relaxed break-words [overflow-wrap:anywhere] transition-colors selection:bg-emerald-500/30 selection:text-white"
         style={{
-          caretColor: 'transparent',
+          caretColor: 'var(--theme-primary, #10b981)',
           wordBreak: 'break-word',
           whiteSpace: 'pre-wrap'
         }}

@@ -31,7 +31,8 @@ export async function checkContentWithAI(
     const res = await fetch('/api/moderation/check-content', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
       },
       body: JSON.stringify({
         text: clean,
@@ -40,21 +41,30 @@ export async function checkContentWithAI(
       })
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        isFlagged: Boolean(data.isFlagged),
-        source: data.source,
-        severity: data.severity || (data.isFlagged ? 'medium' : 'clean'),
-        recommendedTier: data.recommendedTier,
-        matchedRule: data.matchedRule,
-        remindText: data.remindText,
-        message: data.message,
-        categories: data.categories || []
-      };
+    if (res && res.ok && res.status !== 204) {
+      const contentType = res.headers.get('content-type') || '';
+      const rawText = await res.text();
+      if (!rawText || !rawText.trim() || !contentType.includes('application/json')) {
+        return { isFlagged: false, severity: 'clean' };
+      }
+      try {
+        const data = JSON.parse(rawText);
+        return {
+          isFlagged: Boolean(data.isFlagged),
+          source: data.source,
+          severity: data.severity || (data.isFlagged ? 'medium' : 'clean'),
+          recommendedTier: data.recommendedTier,
+          matchedRule: data.matchedRule,
+          remindText: data.remindText,
+          message: data.message,
+          categories: data.categories || []
+        };
+      } catch {
+        return { isFlagged: false, severity: 'clean' };
+      }
     }
-  } catch (err) {
-    console.warn('AI moderation check network notice:', err);
+  } catch {
+    // Non-blocking network fallback
   }
 
   // Fallback safe return

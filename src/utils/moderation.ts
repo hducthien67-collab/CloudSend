@@ -364,13 +364,20 @@ export async function moderateUploadedImage(dataUrl: string, fileName = ''): Pro
     clearTimeout(timeoutId);
 
     if (res.ok) {
-      const data = await res.json();
-      if (data && data.safe === false) {
-        return {
-          safe: false,
-          reason: data.reason || 'Ảnh đã tự động bị hủy khỏi nội dung gửi do vi phạm tiêu chuẩn nghiêm cấm.',
-          category: data.category || 'nsfw_sex'
-        };
+      const rawText = await res.text();
+      if (rawText && rawText.trim()) {
+        try {
+          const data = JSON.parse(rawText);
+          if (data && data.safe === false) {
+            return {
+              safe: false,
+              reason: data.reason || 'Ảnh đã tự động bị hủy khỏi nội dung gửi do vi phạm tiêu chuẩn nghiêm cấm.',
+              category: data.category || 'nsfw_sex'
+            };
+          }
+        } catch {
+          // Ignore JSON parse errors and proceed safely
+        }
       }
     }
   } catch {
